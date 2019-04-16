@@ -392,3 +392,13 @@ func TestSpec_Issue102(t *testing.T) {
 	jazon = asJSON(t, resp)
 	assertRefInJSONRegexp(t, jazon, "^#/definitions/Error$")
 }
+
+func Test_TagCasing(t *testing.T) {
+	// Reproduces issue #89 (not a bug)
+	path := filepath.Join("fixtures", "bugs", "89", "extensions.yaml")
+	sp := loadOrFail(t, path)
+	bbb, err := json.MarshalIndent(sp, "", " ")
+	if assert.NoError(t, err) {
+		t.Logf("%s", bbb)
+	}
+}

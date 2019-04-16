@@ -1,0 +1,37 @@
+swagger: '2.0'
+schemes:
+  - http
+  - https
+info:
+  description: extensions recasing test case
+  title: extensions
+  x-lowercase:
+    - 1
+    - 2
+  x-CamelCase:
+    propCamelized: 'camel'
+  X-UPPERCASE: true
+  x-LOWERCASE: true
+paths:
+  /account:
+    get:
+      consumes: []
+      deprecated: false
+      produces:
+        - application/json
+        - text/json
+        - application/xml
+        - text/xml
+      responses:
+        '200':
+          description: ''
+          schema:
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal Server Error
+      summary: Retrieve current account data
+      tags:
+        - lowercase
+        - CamelCase
+        - UPPERCASE
