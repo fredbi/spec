@@ -20,69 +20,84 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
-// normalize absolute path for cache.
-// on Windows, drive letters should be converted to lower as scheme in net/url.URL
-func normalizeAbsPath(path string) string {
-	u, err := url.Parse(path)
-	if err != nil {
-		debugLog("normalize absolute path failed: %s", err)
-		return path
+// normalizePaths returns the absolute path of refPath, given a ref path and a base absolute path.
+//
+// This support URI schemes http, https and file.
+//
+// 1. if refPath is absolute remote, return it
+// 2. remove "file" scheme (file is implicit)
+// 3. normalize url-unescaped
+// 4. normalize all paths to slashes
+// * if refPath is absolute file, return it slashed
+// * if refPath is relative, join it with basePath keeping the scheme, hosts, and ports if exists
+//
+// base could be a directory or a fully qualified file path.
+//
+// We assume the "base" parameter has already been properly normalized.
+func normalizePaths(refPath, base string) string {
+	if strings.HasPrefix(refPath, "http") {
+		// 1. if refPath is absolute remote, return it
+		return refPath
 	}
-	return u.String()
+
+	if strings.HasPrefix(refPath, "file://") {
+		// 2. remove "file" scheme (file is implicit)
+		refPath = strings.TrimPrefix(refPath, "file://")
+	}
+
+	refURL := normalizeURL(refPath)
+
+	if path.IsAbs(refURL.Path) {
+		// this is an implied file ref: if the file path is absolute, just return it
+		return refURL.String()
+	}
+
+	var baseURL *url.URL
+	if strings.HasPrefix(base, "http") || strings.HasPrefix(base, "file://") {
+		baseURL = mustURL(url.Parse(base))
+	} else {
+		baseURL = normalizeURL(base)
+	}
+	baseURL.Fragment = refURL.Fragment
+
+	if strings.HasPrefix(refPath, "#") {
+		return baseURL.String()
+	}
+
+	baseURL.Path = path.Dir(baseURL.Path)
+	baseURL.Path = path.Join(baseURL.Path, refURL.Path)
+	return baseURL.String()
 }
 
-// base or refPath could be a file path or a URL
-// given a base absolute path and a ref path, return the absolute path of refPath
-// 1) if refPath is absolute, return it
-// 2) if refPath is relative, join it with basePath keeping the scheme, hosts, and ports if exists
-// base could be a directory or a full file path
-func normalizePaths(refPath, base string) string {
-	refURL, _ := url.Parse(refPath)
-	if path.IsAbs(refURL.Path) || filepath.IsAbs(refPath) {
-		// refPath is actually absolute
-		if refURL.Host != "" {
-			return refPath
-		}
-		parts := strings.Split(refPath, "#")
-		result := filepath.FromSlash(parts[0])
-		if len(parts) == 2 {
-			result += "#" + parts[1]
-		}
-		return result
+// normalizeFileRef is the same a normalizePaths but with a Ref object as input
+func normalizeFileRef(ref *Ref, base string) *Ref {
+	if ref == nil || ref.String() == "" {
+		return mustRefPtr(NewRef(base))
 	}
-
-	// relative refPath
-	baseURL, _ := url.Parse(base)
-	if !strings.HasPrefix(refPath, "#") {
-		// combining paths
-		if baseURL.Host != "" {
-			baseURL.Path = path.Join(path.Dir(baseURL.Path), refURL.Path)
-		} else { // base is a file
-			newBase := fmt.Sprintf("%s#%s", filepath.Join(filepath.Dir(base), filepath.FromSlash(refURL.Path)), refURL.Fragment)
-			return newBase
-		}
-
-	}
-	// copying fragment from ref to base
-	baseURL.Fragment = refURL.Fragment
-	return baseURL.String()
+	debugLog("normalizing ref: %s against base: %s", ref.String(), base)
+	return mustRefPtr(NewRef(normalizePaths(ref.String(), base)))
 }
 
 // denormalizePaths returns to simplest notation on file $ref,
 // i.e. strips the absolute path and sets a path relative to the base path.
 //
 // This is currently used when we rewrite ref after a circular ref has been detected
+//
+// relativeBase and originalRelativeBase are assumed to be already normalized.
+//
+// TODO(fredbi): change interface with pointers / retrn pointer that sucks
 func denormalizeFileRef(ref *Ref, relativeBase, originalRelativeBase string) *Ref {
 	debugLog("denormalizeFileRef for: %s", ref.String())
 
-	if ref.String() == "" || ref.IsRoot() || ref.HasFragmentOnly {
+	if ref == nil || ref.String() == "" || isRefLocal(*ref) {
 		return ref
 	}
-	// strip relativeBase from URI
-	relativeBaseURL, _ := url.Parse(relativeBase)
+
+	relativeBaseURL := mustURL(url.Parse(relativeBase))
 	relativeBaseURL.Fragment = ""
 
 	if relativeBaseURL.IsAbs() && strings.HasPrefix(ref.String(), relativeBase) {
@@ -101,8 +116,7 @@ func denormalizeFileRef(ref *Ref, relativeBase, originalRelativeBase string) *Re
 	originalRelativeBaseURL.Fragment = ""
 	if strings.HasPrefix(ref.String(), originalRelativeBaseURL.String()) {
 		// the resulting ref is in the expanded spec: return a local ref
-		r, _ := NewRef(strings.TrimPrefix(ref.String(), originalRelativeBaseURL.String()))
-		return &r
+		return mustRefPtr(NewRef(strings.TrimPrefix(ref.String(), originalRelativeBaseURL.String())))
 	}
 
 	// check if we may set a relative path, considering the original base path for this spec.
@@ -120,33 +134,68 @@ func denormalizeFileRef(ref *Ref, relativeBase, originalRelativeBase string) *Re
 	if len(parts) == 2 {
 		relativePath += "#" + parts[1]
 	}
-	r, _ := NewRef(relativePath)
-	return &r
+	return mustRefPtr(NewRef(relativePath))
 }
 
-// relativeBase could be an ABSOLUTE file path or an ABSOLUTE URL
-func normalizeFileRef(ref *Ref, relativeBase string) *Ref {
-	// This is important for when the reference is pointing to the root schema
-	if ref.String() == "" {
-		r, _ := NewRef(relativeBase)
-		return &r
+// normalizedAbsPath returns a normalized absolute path for cache
+//
+// * all URIs or paths are normalized to slashes.
+// * on windows, drive letters are lower cased.
+func normalizedAbsPath(pth string) string {
+	if strings.HasPrefix(pth, "http") {
+		// does not change fully qualified URI
+		return pth
 	}
 
-	debugLog("normalizing %s against %s", ref.String(), relativeBase)
+	if strings.HasPrefix(pth, "file://") {
+		return "file://" + normalizedAbsPath(strings.TrimPrefix(pth, "file://"))
+	}
 
-	s := normalizePaths(ref.String(), relativeBase)
-	r, _ := NewRef(s)
-	return &r
+	if !filepath.IsAbs(pth) {
+		wd, _ := os.Getwd()
+		return filepath.ToSlash(filepath.Join(wd, pth))
+	}
+
+	return normalizeURL(pth).String()
 }
 
-// absPath returns the absolute path of a file
-func absPath(fname string) (string, error) {
-	if strings.HasPrefix(fname, "http") {
-		return fname, nil
+func mustURL(u *url.URL, err error) *url.URL {
+	if err != nil {
+		msg := fmt.Sprintf("invalid URL: %v", err)
+		panic(msg)
 	}
-	if filepath.IsAbs(fname) {
-		return fname, nil
+	return u
+}
+
+func mustString(s string, err error) string {
+	if err != nil {
+		msg := fmt.Sprintf("invalid string: %v", err)
+		panic(msg)
 	}
-	wd, err := os.Getwd()
-	return filepath.Join(wd, fname), err
+	return s
+}
+
+func mustRefPtr(ref Ref, err error) *Ref {
+	if err != nil {
+		msg := fmt.Sprintf("invalid ref: %v", err)
+		panic(msg)
+	}
+	return &ref
+}
+
+// normalizeURL gives a common way to represent URLs without scheme internally, in particular
+// when it comes to represent windows paths.
+func normalizeURL(ref string) *url.URL {
+	if runtime.GOOS == "windows" {
+		// on windows, URIs starting with absolute file path are actually invalid:
+		// drive letter is parsed as scheme, and path is actually rendered in the opaque section of the URL.
+		// Rewrite the URL with correct path
+		u := mustURL(url.Parse(ref))
+		if len(u.Scheme) > 0 {
+			u.Path = "/" + u.Scheme + ":" + filepath.ToSlash(u.Path) // turns cases like: C:/a/b/c into /C:/a/b//c
+			u.Scheme = ""
+			return u
+		}
+	}
+	return mustURL(url.Parse(ref))
 }

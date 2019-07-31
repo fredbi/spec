@@ -36,7 +36,7 @@ func ResolveRefWithBase(root interface{}, ref *Ref, opts *ExpandOptions) (*Schem
 	}
 	specBasePath := ""
 	if opts != nil && opts.RelativeBase != "" {
-		specBasePath, _ = absPath(opts.RelativeBase)
+		specBasePath = normalizedAbsPath(opts.RelativeBase)
 	}
 
 	result := new(Schema)
@@ -155,7 +155,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 	// getting the base path of the spec to adjust all subsequent reference resolutions
 	specBasePath := ""
 	if options != nil && options.RelativeBase != "" {
-		specBasePath, _ = absPath(options.RelativeBase)
+		specBasePath = normalizedAbsPath(options.RelativeBase)
 	}
 
 	if options == nil || !options.SkipSchemas {
@@ -207,8 +207,7 @@ const rootBase = "root"
 func baseForRoot(root interface{}, cache ResolutionCache) string {
 	// cache the root document to resolve $ref's
 	if root != nil {
-		base, _ := absPath(rootBase)
-		normalizedBase := normalizeAbsPath(base)
+		normalizedBase := normalizedAbsPath(rootBase)
 		debugLog("setting root doc in cache at: %s", normalizedBase)
 		if cache == nil {
 			cache = resCache
@@ -242,7 +241,7 @@ func ExpandSchemaWithBasePath(schema *Schema, cache ResolutionCache, opts *Expan
 
 	var basePath string
 	if opts.RelativeBase != "" {
-		basePath, _ = absPath(opts.RelativeBase)
+		basePath = normalizedAbsPath(opts.RelativeBase)
 	}
 
 	resolver, err := defaultSchemaLoader(nil, opts, cache, nil)
@@ -325,7 +324,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 			return &target, nil
 		}
 
-		debugLog("basePath: %s: calling Resolve with target: %#v", basePath, target)
+		debugLog("basePath: %s: calling Resolve with target: %s", basePath, target.Ref.String())
 		if err := resolver.Resolve(&target.Ref, &t, basePath); resolver.shouldStopOnError(err) {
 			return nil, err
 		}
@@ -536,7 +535,7 @@ func ExpandResponseWithRoot(response *Response, root interface{}, cache Resoluti
 func ExpandResponse(response *Response, basePath string) error {
 	var specBasePath string
 	if basePath != "" {
-		specBasePath, _ = absPath(basePath)
+		specBasePath = normalizedAbsPath(basePath)
 	}
 	opts := &ExpandOptions{
 		RelativeBase: specBasePath,
@@ -572,7 +571,7 @@ func ExpandParameterWithRoot(parameter *Parameter, root interface{}, cache Resol
 func ExpandParameter(parameter *Parameter, basePath string) error {
 	var specBasePath string
 	if basePath != "" {
-		specBasePath, _ = absPath(basePath)
+		specBasePath = normalizedAbsPath(basePath)
 	}
 	opts := &ExpandOptions{
 		RelativeBase: specBasePath,

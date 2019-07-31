@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"strings"
 
@@ -30,6 +31,10 @@ var PathLoader func(string) (json.RawMessage, error)
 
 func init() {
 	PathLoader = func(path string) (json.RawMessage, error) {
+		if strings.HasPrefix(path, "file://") {
+			path = filepath.ToSlash(strings.TrimPrefix(path, "file://"))
+		}
+		debugLog("loading from %s", path)
 		data, err := swag.LoadFromFileOrHTTP(path)
 		if err != nil {
 			return nil, err
@@ -66,7 +71,7 @@ type schemaLoader struct {
 }
 
 func (r *schemaLoader) transitiveResolver(basePath string, ref Ref) (*schemaLoader, error) {
-	if ref.IsRoot() || ref.HasFragmentOnly {
+	if isRefLocal(ref) {
 		return r, nil
 	}
 
@@ -93,7 +98,7 @@ func (r *schemaLoader) updateBasePath(transitive *schemaLoader, basePath string)
 	if transitive != r {
 		debugLog("got a new resolver")
 		if transitive.options != nil && transitive.options.RelativeBase != "" {
-			basePath, _ = absPath(transitive.options.RelativeBase)
+			basePath = normalizedAbsPath(transitive.options.RelativeBase)
 			debugLog("new basePath = %s", basePath)
 		}
 	}
@@ -102,7 +107,7 @@ func (r *schemaLoader) updateBasePath(transitive *schemaLoader, basePath string)
 
 func (r *schemaLoader) resolveRef(ref *Ref, target interface{}, basePath string) error {
 	tgt := reflect.ValueOf(target)
-	if tgt.Kind() != reflect.Ptr {
+	if ref == nil || tgt.Kind() != reflect.Ptr {
 		return fmt.Errorf("resolve ref: target needs to be a pointer")
 	}
 
@@ -111,25 +116,39 @@ func (r *schemaLoader) resolveRef(ref *Ref, target interface{}, basePath string)
 		return nil
 	}
 
-	var res interface{}
-	var data interface{}
-	var err error
+	var (
+		root interface{}
+		data interface{}
+		res  interface{}
+		err  error
+	)
+
 	// Resolve against the root if it isn't nil, and if ref is pointing at the root, or has a fragment only which means
 	// it is pointing somewhere in the root.
-	root := r.root
-	if (ref.IsRoot() || ref.HasFragmentOnly) && root == nil && basePath != "" {
+	isLocal := isRefLocal(*ref)
+
+	switch {
+	case r.root == nil && isLocal && basePath != "":
 		if baseRef, erb := NewRef(basePath); erb == nil {
-			root, _, _, _ = r.load(baseRef.GetURL())
+			root, _, _, err = r.load(baseRef.GetURL())
+			if err != nil {
+				debugLog("error loading root: %s", baseRef.GetURL().String())
+				return err
+			}
 		}
+	default:
+		root = r.root
 	}
-	if (ref.IsRoot() || ref.HasFragmentOnly) && root != nil {
+
+	switch {
+	case isLocal:
 		data = root
-	} else {
+	default:
 		baseRef := normalizeFileRef(ref, basePath)
-		debugLog("current ref is: %s", ref.String())
-		debugLog("current ref normalized file: %s", baseRef.String())
+		debugLog("current ref is: %s with normalized base document at: %s", ref.String(), baseRef.String())
 		data, _, _, err = r.load(baseRef.GetURL())
 		if err != nil {
+			debugLog("error loading ref data: %s", baseRef.GetURL().String())
 			return err
 		}
 	}
@@ -180,6 +199,7 @@ func (r *schemaLoader) load(refURL *url.URL) (interface{}, url.URL, bool, error)
 // It relies on a private context (which needs not be locked).
 func (r *schemaLoader) isCircular(ref *Ref, basePath string, parentRefs ...string) (foundCycle bool) {
 	normalizedRef := normalizePaths(ref.String(), basePath)
+	debugLog("assessing circular: %s, normalized basePath: %s", ref.String(), basePath)
 	if _, ok := r.context.circulars[normalizedRef]; ok {
 		// circular $ref has been already detected in another explored cycle
 		foundCycle = true
@@ -230,6 +250,7 @@ func (r *schemaLoader) deref(input interface{}, parentRefs []string, basePath st
 
 		// NOTE(fredbi): removed basePath check => needs more testing
 		if ref.String() != "" && ref.String() != curRef {
+			debugLog("appending parent ref: %s", normalizedRef.String())
 			parentRefs = append(parentRefs, normalizedRef.String())
 			return r.deref(input, parentRefs, normalizedBasePath)
 		}
@@ -262,7 +283,7 @@ func defaultSchemaLoader(
 	if expandOptions == nil {
 		expandOptions = &ExpandOptions{}
 	}
-	absBase, _ := absPath(expandOptions.RelativeBase)
+	absBase := normalizedAbsPath(expandOptions.RelativeBase)
 	if context == nil {
 		context = newResolverContext(absBase)
 	}
