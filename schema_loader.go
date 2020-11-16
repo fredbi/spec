@@ -31,6 +31,7 @@ var PathLoader func(string) (json.RawMessage, error)
 
 func init() {
 	PathLoader = func(path string) (json.RawMessage, error) {
+		// TODO(fred): upgrade swag to get this as default
 		if strings.HasPrefix(path, "file://") {
 			path = filepath.ToSlash(strings.TrimPrefix(path, "file://"))
 		}
