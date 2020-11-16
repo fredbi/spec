@@ -1,0 +1,317 @@
+swagger: "2.0"
+info:
+  version: "1"
+  title: "$ref maze fixture"
+  description: |
+    A spec to exercise many $ref possibilities
+    in a Swagger 2.0 specification, mixing local
+    and remote $ref's, with absolute or relative
+    path, nested and circular patterns.
+
+parameters:
+  local-local-parameter-body:
+    name: local-local-parameter-body
+    in: body
+    schema:
+      type: object
+      properties:
+        local-parameter:
+          type: string
+
+  local-local-parameter-query:
+    name: local-local-parameter-query
+    in: query
+    type: string
+
+  local-local-parameter-definition:
+    name: local-local-parameter-definition
+    in: body
+    schema:
+      $ref: '#/definitions/local-local-definition'
+
+  local-local-parameter-ref:
+    name: local-local-parameter-ref
+    in: body
+    schema:
+      $ref: '#/definitions/local-local-ref'
+
+  local-local-parameter-circular:
+    name: local-local-parameter-circular
+    in: body
+    schema:
+      $ref: '#/definitions/local-local-circular'
+
+  local-file-definition-parameter:
+    name: local-file-definition-parameter
+    in: body
+    schema:
+      $ref: 'schemas/definitions.yaml#/local-file-definition'
+
+  local-file-ref-parameter:
+    name: local-file-ref-parameter
+    in: body
+    schema:
+      $ref: 'schemas/definitions.yaml#/local-file-ref'
+
+  local-file-circular-parameter:
+    name: local-file-circular-parameter
+    in: body
+    schema:
+      $ref: 'schemas/definitions.yaml#/local-file-circular'
+
+responses:
+  local-local-response-ok:
+    description: response defined locally, with local schema
+    schema:
+      type: object
+      properties:
+        local-response-ok:
+          type: string
+
+  local-file-response-ok:
+    $ref:  'responses/responses.yaml#/response-ok'
+
+  local-file-relative-response-ok:
+    $ref:  'responses/responses.yaml#/response-relative-ok'
+
+  local-file-nested-response-ok:
+    $ref:  'responses/responses.yaml#/response-nested-ok'
+
+  local-file-remote-response-ok:
+    $ref:  'responses/responses.yaml#/response-remote-ok'
+
+  local-remote-response-ok:
+    $ref:  'http://localhost:{port}/remote/responses#/response-remote-ok'
+
+  local-remote-relative-response-ok:
+    $ref:  'http://localhost:{port}/remote/responses#/response-relative-ok'
+
+  local-remote-nested-response-ok:
+    $ref:  'http://localhost:{port}/remote/responses#/response-nested-ok'
+
+paths:
+  /local-local-path:
+    parameters:
+      - $ref: '#/parameters/local-local-parameter-body'
+      - $ref: '#/parameters/local-local-parameter-query'
+    responses:
+        400:
+          $ref: '#/responses/local-local-response-ok'
+    post:
+      parameters:
+        - $ref: 'parameters/parameters.yaml#/local-file-parameter-query'
+      responses:
+        200:
+          description: OK
+          schema:
+            type: string
+    get:
+      parameters:
+        - $ref: 'parameters/parameters.yaml#/parameter-body'
+        - $ref: 'parameters/parameters.yaml#/local-file-relative-parameter-query'
+      responses:
+        200:
+          $ref: '#/responses/local-local-response-ok'
+        201:
+          $ref: 'responses/responses.yaml#/local-file-response-ok'
+        202:
+          $ref: 'responses/responses.yaml#/local-file-relative-response-ok'
+        203:
+          $ref: 'responses/responses.yaml#/local-file-nested-response-ok'
+        204:
+          description: OK
+          schema:
+            $ref: '#/responses/local-file-remote-response-ok'
+
+    put:
+      parameters:
+        - $ref: 'parameters/parameters.yaml#/parameter-relative'
+        - $ref: 'parameters/parameters.yaml#/local-file-nested-parameter-query'
+      responses:
+        200:
+          description: OK
+          schema:
+            $ref: '#/responses/local-local-response-ok'
+        201:
+          description: OK
+          schema:
+            $ref: '#/responses/local-file-response-ok'
+        202:
+          description: OK
+          schema:
+            $ref: '#/responses/local-file-relative-response-ok'
+        203:
+          description: OK
+          schema:
+            $ref: '#/responses/local-file-nested-response-ok'
+        204:
+          description: OK
+          schema:
+            $ref: '#/responses/local-file-remote-response-ok'
+
+    delete:
+      responses:
+        200:
+          description: OK
+          schema:
+            type: string
+
+  /local-local-path-params1:
+    parameters:
+      - $ref: '#/parameters/local-local-parameter-body'
+    responses:
+      - $ref: '#/responses/local-local-response-ok'
+    get:
+    post:
+    put:
+    delete:
+
+  /local-local-path-params2:
+    parameters:
+      - $ref: 'parameters/parameters.yaml#/parameter-nested'
+    responses:
+    get:
+    post:
+    put:
+    delete:
+
+  /local-local-path-remote-params1:
+    parameters:
+      - $ref: 'parameters/parameters.yaml#/local-file-parameter-body'
+    responses:
+      - $ref: 'responses/responses.yaml#/local-file-parameter-body'
+      - $ref: 'responses/responses.yaml#/local-file-parameter-body'
+    get:
+    post:
+      parameters:
+    put:
+      parameters:
+    delete:
+
+  /local-local-path-remote-params2:
+    parameters:
+      - $ref: 'parameters/parameters.yaml#/local-file-relative-parameter-body'
+    responses:
+    get:
+    post:
+      parameters:
+    put:
+
+  /local-local-path-remote-params3:
+    parameters:
+      - $ref: 'parameters/parameters.yaml#/local-file-nested-parameter-body'
+    responses:
+    get:
+    post:
+      parameters:
+    put:
+
+  /local-local-path-remote-params4:
+    parameters:
+      - $ref: 'parameters/parameters.yaml#/local-file-remote-parameter-body'
+    responses:
+    get:
+    post:
+      parameters:
+    put:
+
+  /local-local-path-remote-params5:
+    parameters:
+      - $ref:  'http://localhost:{port}/remote/parameters#/remote-parameter-body'
+    responses:
+    get:
+    post:
+      parameters:
+        - $ref:  'http://localhost:{port}/remote/parameters#/remote-parameter-relative-body'
+      responses:
+    put:
+      parameters:
+        - $ref:  'http://localhost:{port}/remote/parameters#/remote-parameter-nested-body'
+      responses:
+
+  /local-file-path:
+    $ref: 'paths/paths.yaml#/local-file-path'
+
+  /local-relative-path:
+    $ref: 'paths/paths.yaml#/local-relative-path'
+
+  /local-nested-path:
+    $ref: 'paths/paths.yaml#/local-nested-path'
+
+  /local-remote-path:
+    $ref: 'paths/paths.yaml#/local-remote-path'
+
+  /remote-path:
+    $ref:  'http://localhost:{port}/remote/paths#/remote-path'
+
+  /remote-relative-path:
+    $ref:  'http://localhost:{port}/remote/paths#/remote-relative-path'
+
+  /remote-nested-path:
+    $ref:  'http://localhost:{port}/remote/paths#/remote-nested-path'
+
+definitions:
+  local-local-definition:
+    type: object
+    properties:
+      local-local:
+        type: string
+
+  local-local-ref:
+    type: object
+    properties:
+      local-local:
+        type: string
+      local-ref:
+        $ref: '#/definitions/local-local-definition'
+
+  local-local-circular:
+    type: object
+    properties:
+      local-local:
+        type: string
+      local-circular:
+        $ref: '#/definitions/local-local-circular-local'
+
+  local-file-definition:
+    $ref: 'schemas/definitions.yaml#/local-file-definition'
+
+  local-file-ref:
+    type: object
+    properties:
+      local-local:
+        type: string
+      local-ref:
+        $ref: 'schemas/definitions.yaml#/local-file-ref-definition'
+
+  local-file-circular:
+    type: object
+    properties:
+      local-local:
+        type: string
+      local-circular:
+        $ref: 'schemas/definitions.yaml#/local-file-circular'
+
+  local-file-relative-definition:
+  local-file-relative-ref:
+  local-file-relative-circular:
+
+  local-file-nested-definition:
+  local-file-nested-ref:
+  local-file-nested-circular:
+
+  local-file-remote-definition:
+  local-file-remote-ref:
+  local-file-remote-circular:
+
+  remote-definition:
+  remote-ref:
+  remote-circular:
+
+  remote-relative-definition:
+  remote-relative-ref:
+  remote-relative-circular:
+
+  remote-nested-definition:
+  remote-nested-ref:
+  remote-nested-circular:

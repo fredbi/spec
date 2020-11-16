@@ -1,0 +1,157 @@
+{{- define "schema" }}
+type: object
+properties:
+  {{ .Name }}:
+    type: string
+{{- end }}
+
+{{- define "schema-ref" }}
+  {{- range .Refs }}
+type: object
+properties:
+  {{ $.Name }}-{{ refName . }}-ref:
+    $ref: {{ . }}
+  {{- end }}
+{{- end }}
+
+{{- define "schema-items" }}
+  {{- range .Refs }}
+type: array
+items:
+  $ref: {{ . }}
+  {{- end }}
+{{- end }}
+
+{{- define "parameter" }}
+name: {{ .Name }}
+in: {{ .In }}
+  {{- with .Schema }}
+  schema:
+{{ template "schema" . }}
+  {{- end }}
+{{- end }}
+
+{{- define "parameter-schema-ref" }}{{/* parameters with schemas with $ref's */}}
+  {{- if .Schema }}
+    {{- range .Schema.Refs }}
+name: {{ .Name }}
+in: {{ .In }}
+schema:
+  $ref: {{ . }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- define "parameter-schema-items-ref" }}{{/* parameters with schemas with $ref's in items */}}
+  {{- if .Schema }}
+    {{- range .Schema.Refs }}
+name: {{ .Name }}
+in: {{ .In }}
+schema:
+  type: array
+  items:
+    $ref: {{ . }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- define "response" }}
+description: dummy description
+  {{- with .Schema }}
+schema:
+  {{- end }}
+{{- end }}
+
+{{- define "pathitem" }}
+parameters:
+  {{- range .Parameters }
+  - $ref: '#/parameters/.Key'
+    {{- range .Refs }
+  - $ref: '{{ . }}'
+    {{- end }}
+  {{- end }}
+post:
+  {{- if .OperationParameters }}
+  parameters:
+    {{- range .OperationParameters }}
+    -
+{{- template "parameter" . | indent 6 }}
+      {{- range .Refs }
+    - $ref: '{{ . }}'
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  responses:
+  {{- range .CommonResponses }}
+    '{{ .Code }}':
+      $ref: '#/responses/{{ .Key }}'
+  {{- end }}
+  {{-  range .Responses }}
+    '{{ .Code }}':
+    {{- if .Ref }}
+      $ref: '{{ .Ref }}'
+    {{- else }}
+{{ template "response" . | indent 6 }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- define "definition" }}
+local-{{ .Name }}-definition:
+{{ template "schema" . |indent 2 }}
+local-{{ . }}-ref:
+{{ template "schema-ref" . | indent 2 }}
+local-{{ . }}-has-ref:
+{{ template "schema-ref" . | indent 2 }}
+local-{{ . }}-has-items:
+{{ template "schema-items" . | indent 2 }}
+{{- end }}
+---
+swagger: "2.0"
+info:
+  version: "1"
+  title: 'generated $ref maze fixture'
+  description: |
+    {{ .Description }}
+{{- if .Parameters }}
+
+parameters:{{/* common parameters across the board */}}
+  {{ range .CommonParameters }}
+  {{ .Key }}:
+{{ template "parameter" .Parameter | indent 4 }}
+  {{- end }}
+{{- end }}
+{{- if .Responses }}
+
+responses:{{/* common responses across the board */}}
+  {{- range .CommonResponses }}
+  {{ .Key }}:
+{{ template "response" .Response | indent 4 }}
+  {{- end }}
+{{- end }}
+
+paths:
+{{- range .Paths }}
+  {{- $key := .Key }}
+  {{- range .Refs }}{{/* add ref-ed path items */}}
+  {{ $Key }}-{{ refName . }}:
+    - $ref: '{{ . }}'
+  {{- end }}
+  {{ .Key }}:{{/* local path item */}}
+  {{- if .CommonParameters }}{{/* add all common parameters to path item */}}
+    parameters:
+    {{- range .CommonParameters }}
+      - $ref: '#/parameters/{{ .Key }}'{{/* $ref to local parameters */}}
+      {{- range .Refs }}
+      - $ref: '{{ . }}'{{/* other refs to parameters */}}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{ template "pathitem" . | indent 4 }}
+  {{- end }}
+ {{- end }}
+
+definitions:
+{{- range .Schemas }}
+{{ template "definition" . | indent 2 }}
+{{- end }}
