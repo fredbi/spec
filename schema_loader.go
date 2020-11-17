@@ -71,7 +71,7 @@ func (r *schemaLoader) transitiveResolver(basePath string, ref Ref) (*schemaLoad
 	}
 
 	baseRef, _ := NewRef(basePath)
-	currentRef := normalizeFileRef(&ref, basePath)
+	currentRef := normalizeFileRef(&ref, basePath) // FRED(1)
 	if strings.HasPrefix(currentRef.String(), baseRef.String()) {
 		return r, nil
 	}
@@ -125,7 +125,7 @@ func (r *schemaLoader) resolveRef(ref *Ref, target interface{}, basePath string)
 	if (ref.IsRoot() || ref.HasFragmentOnly) && root != nil {
 		data = root
 	} else {
-		baseRef := normalizeFileRef(ref, basePath)
+		baseRef := normalizeFileRef(ref, basePath) // FRED(2)
 		debugLog("current ref is: %s", ref.String())
 		debugLog("current ref normalized file: %s", baseRef.String())
 		data, _, _, err = r.load(baseRef.GetURL())
@@ -157,8 +157,9 @@ func (r *schemaLoader) load(refURL *url.URL) (interface{}, url.URL, bool, error)
 			return nil, url.URL{}, false, err
 		}
 	}
-	normalized := normalizeAbsPath(path)
+	normalized := normalizeAbsPath(path) // FRED(3)
 
+	// all refs are cached under a normalized form
 	data, fromCache := r.cache.Get(normalized)
 	if !fromCache {
 		b, err := r.loadDoc(normalized)
@@ -179,7 +180,7 @@ func (r *schemaLoader) load(refURL *url.URL) (interface{}, url.URL, bool, error)
 // isCircular detects cycles in sequences of $ref.
 // It relies on a private context (which needs not be locked).
 func (r *schemaLoader) isCircular(ref *Ref, basePath string, parentRefs ...string) (foundCycle bool) {
-	normalizedRef := normalizePaths(ref.String(), basePath)
+	normalizedRef := normalizePaths(ref.String(), basePath) // FRED(4)
 	if _, ok := r.context.circulars[normalizedRef]; ok {
 		// circular $ref has been already detected in another explored cycle
 		foundCycle = true
@@ -217,7 +218,7 @@ func (r *schemaLoader) deref(input interface{}, parentRefs []string, basePath st
 
 	curRef := ref.String()
 	if curRef != "" {
-		normalizedRef := normalizeFileRef(ref, basePath)
+		normalizedRef := normalizeFileRef(ref, basePath) // FRED(5)
 		normalizedBasePath := normalizedRef.RemoteURI()
 
 		if r.isCircular(normalizedRef, basePath, parentRefs...) {

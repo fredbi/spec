@@ -20,10 +20,10 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -47,79 +47,16 @@ func jsonDoc(path string) (json.RawMessage, error) {
 	return json.RawMessage(data), nil
 }
 
-// tests that paths are normalized correctly
-func TestNormalizePaths(t *testing.T) {
-	type testNormalizePathsTestCases []struct {
-		refPath   string
-		base      string
-		expOutput string
+// testAbsPath returns the absolute path of a file
+func testAbsPath(fname string) string {
+	if strings.HasPrefix(fname, "http") {
+		return fname
 	}
-	testCases := func() testNormalizePathsTestCases {
-		testCases := testNormalizePathsTestCases{
-			{
-				// http basePath, absolute refPath
-				refPath:   "http://www.anotherexample.com/another/base/path/swagger.json#/definitions/Pet",
-				base:      "http://www.example.com/base/path/swagger.json",
-				expOutput: "http://www.anotherexample.com/another/base/path/swagger.json#/definitions/Pet",
-			},
-			{
-				// http basePath, relative refPath
-				refPath:   "another/base/path/swagger.json#/definitions/Pet",
-				base:      "http://www.example.com/base/path/swagger.json",
-				expOutput: "http://www.example.com/base/path/another/base/path/swagger.json#/definitions/Pet",
-			},
-		}
-		if runtime.GOOS == "windows" {
-			testCases = append(testCases, testNormalizePathsTestCases{
-				{
-					// file basePath, absolute refPath, no fragment
-					refPath:   `C:\another\base\path.json`,
-					base:      `C:\base\path.json`,
-					expOutput: `C:\another\base\path.json`,
-				},
-				{
-					// file basePath, absolute refPath
-					refPath:   `C:\another\base\path.json#/definitions/Pet`,
-					base:      `C:\base\path.json`,
-					expOutput: `C:\another\base\path.json#/definitions/Pet`,
-				},
-				{
-					// file basePath, relative refPath
-					refPath:   `another\base\path.json#/definitions/Pet`,
-					base:      `C:\base\path.json`,
-					expOutput: `C:\base\another\base\path.json#/definitions/Pet`,
-				},
-			}...)
-			return testCases
-		}
-		// linux case
-		testCases = append(testCases, testNormalizePathsTestCases{
-			{
-				// file basePath, absolute refPath, no fragment
-				refPath:   "/another/base/path.json",
-				base:      "/base/path.json",
-				expOutput: "/another/base/path.json",
-			},
-			{
-				// file basePath, absolute refPath
-				refPath:   "/another/base/path.json#/definitions/Pet",
-				base:      "/base/path.json",
-				expOutput: "/another/base/path.json#/definitions/Pet",
-			},
-			{
-				// file basePath, relative refPath
-				refPath:   "another/base/path.json#/definitions/Pet",
-				base:      "/base/path.json",
-				expOutput: "/base/another/base/path.json#/definitions/Pet",
-			},
-		}...)
-		return testCases
-	}()
-
-	for _, tcase := range testCases {
-		out := normalizePaths(tcase.refPath, tcase.base)
-		assert.Equal(t, tcase.expOutput, out)
+	if filepath.IsAbs(fname) {
+		return mustURL(url.Parse(fname)).String()
 	}
+	wd, _ := os.Getwd()
+	return filepath.Join(wd, fname)
 }
 
 func TestExpandsKnownRef(t *testing.T) {
@@ -157,7 +94,7 @@ func TestSpecExpansion(t *testing.T) {
 	specDoc, err := jsonDoc("fixtures/expansion/all-the-things.json")
 	assert.NoError(t, err)
 
-	specPath, _ := absPath("fixtures/expansion/all-the-things.json")
+	specPath := testAbsPath("fixtures/expansion/all-the-things.json")
 	opts := &ExpandOptions{
 		RelativeBase: specPath,
 	}
@@ -221,8 +158,8 @@ func TestResponseExpansion(t *testing.T) {
 	specDoc, err := jsonDoc("fixtures/expansion/all-the-things.json")
 	assert.NoError(t, err)
 
-	basePath, err := absPath("fixtures/expansion/all-the-things.json")
-	assert.NoError(t, err)
+	basePath := testAbsPath("fixtures/expansion/all-the-things.json")
+	require.NotEmpty(t, basePath)
 
 	spec := new(Swagger)
 	err = json.Unmarshal(specDoc, spec)
@@ -307,13 +244,12 @@ func TestResponseResolve(t *testing.T) {
 
 // test the exported version of ExpandResponse
 func TestExportedResponseExpansion(t *testing.T) {
+	// loader works from slashes
 	specDoc, err := jsonDoc("fixtures/expansion/all-the-things.json")
-	if !assert.NoError(t, err) {
-		t.FailNow()
-	}
+	require.NoError(t, err)
 
-	basePath, err := absPath("fixtures/expansion/all-the-things.json")
-	assert.NoError(t, err)
+	basePath := testAbsPath(filepath.Join("fixtures", "expansion", "all-the-things.json"))
+	require.NotEmpty(t, basePath)
 
 	spec := new(Swagger)
 	err = json.Unmarshal(specDoc, spec)
@@ -423,7 +359,9 @@ func TestIssue3(t *testing.T) {
 	specDoc, err := jsonDoc("fixtures/expansion/overflow.json")
 	assert.NoError(t, err)
 
-	specPath, _ := absPath("fixtures/expansion/overflow.json")
+	specPath := testAbsPath(filepath.Join("fixtures", "expansion", "overflow.json"))
+	require.NotEmpty(t, specPath)
+
 	opts := &ExpandOptions{
 		RelativeBase: specPath,
 	}
@@ -439,14 +377,14 @@ func TestIssue3(t *testing.T) {
 
 func TestParameterExpansion(t *testing.T) {
 	paramDoc, err := jsonDoc("fixtures/expansion/params.json")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	spec := new(Swagger)
 	err = json.Unmarshal(paramDoc, spec)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	basePath, err := absPath("fixtures/expansion/params.json")
-	assert.NoError(t, err)
+	basePath := testAbsPath(filepath.Join("fixtures", "expansion", "params.json"))
+	require.NotEmpty(t, basePath)
 
 	resolver, err := defaultSchemaLoader(spec, nil, nil, nil)
 	assert.NoError(t, err)
@@ -474,8 +412,8 @@ func TestExportedParameterExpansion(t *testing.T) {
 	err = json.Unmarshal(paramDoc, spec)
 	assert.NoError(t, err)
 
-	basePath, err := absPath("fixtures/expansion/params.json")
-	assert.NoError(t, err)
+	basePath := testAbsPath("fixtures/expansion/params.json")
+	require.NotEmpty(t, basePath)
 
 	param := spec.Parameters["query"]
 	expected := spec.Parameters["tag"]
@@ -494,9 +432,10 @@ func TestExportedParameterExpansion(t *testing.T) {
 
 func TestCircularRefsExpansion(t *testing.T) {
 	carsDoc, err := jsonDoc("fixtures/expansion/circularRefs.json")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	basePath, _ := absPath("fixtures/expansion/circularRefs.json")
+	basePath := testAbsPath(filepath.Join("fixtures", "expansion", "circularRefs.json"))
+	require.NotEmpty(t, basePath)
 
 	spec := new(Swagger)
 	err = json.Unmarshal(carsDoc, spec)
@@ -669,7 +608,8 @@ func expandThisSchemaOrDieTrying(t *testing.T, fixturePath string) string {
 	doc, err := jsonDoc(fixturePath)
 	require.NoError(t, err)
 
-	specPath, _ := absPath(fixturePath)
+	specPath := testAbsPath(fixturePath)
+	require.NotEmpty(t, specPath)
 
 	opts := &ExpandOptions{
 		RelativeBase: specPath,
@@ -695,7 +635,8 @@ func expandThisOrDieTrying(t *testing.T, fixturePath string) string {
 		return ""
 	}
 
-	specPath, _ := absPath(fixturePath)
+	specPath := testAbsPath(fixturePath)
+	require.NotEmpty(t, specPath)
 
 	opts := &ExpandOptions{
 		RelativeBase: specPath,
@@ -724,7 +665,8 @@ func TestContinueOnErrorExpansion(t *testing.T) {
 	missingRefDoc, err := jsonDoc("fixtures/expansion/missingRef.json")
 	assert.NoError(t, err)
 
-	specPath, _ := absPath("fixtures/expansion/missingRef.json")
+	specPath := testAbsPath(filepath.Join("fixtures", "expansion", "missingRef.json"))
+	require.NotEmpty(t, specPath)
 
 	testCase := struct {
 		Input    *Swagger `json:"input"`
@@ -758,7 +700,8 @@ func TestIssue415(t *testing.T) {
 	doc, err := jsonDoc("fixtures/expansion/clickmeter.json")
 	assert.NoError(t, err)
 
-	specPath, _ := absPath("fixtures/expansion/clickmeter.json")
+	specPath := testAbsPath(filepath.Join("fixtures", "expansion", "clickmeter.json"))
+	require.NotEmpty(t, specPath)
 
 	opts := &ExpandOptions{
 		RelativeBase: specPath,
@@ -778,7 +721,8 @@ func TestCircularSpecExpansion(t *testing.T) {
 	doc, err := jsonDoc("fixtures/expansion/circularSpec.json")
 	assert.NoError(t, err)
 
-	specPath, _ := absPath("fixtures/expansion/circularSpec.json")
+	specPath := testAbsPath(filepath.Join("fixtures", "expansion", "circularSpec.json"))
+	require.NotEmpty(t, specPath)
 
 	opts := &ExpandOptions{
 		RelativeBase: specPath,
@@ -796,9 +740,10 @@ func TestCircularSpecExpansion(t *testing.T) {
 
 func TestItemsExpansion(t *testing.T) {
 	carsDoc, err := jsonDoc("fixtures/expansion/schemas2.json")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	basePath, _ := absPath("fixtures/expansion/schemas2.json")
+	basePath := testAbsPath(filepath.Join("fixtures", "expansion", "schemas2.json"))
+	require.NotEmpty(t, basePath)
 
 	spec := new(Swagger)
 	err = json.Unmarshal(carsDoc, spec)
@@ -925,7 +870,8 @@ func TestSchemaExpansion(t *testing.T) {
 	carsDoc, err := jsonDoc("fixtures/expansion/schemas1.json")
 	assert.NoError(t, err)
 
-	basePath, _ := absPath("fixtures/expansion/schemas1.json")
+	basePath := testAbsPath(filepath.Join("fixtures", "expansion", "schemas1.json"))
+	require.NotEmpty(t, basePath)
 
 	spec := new(Swagger)
 	err = json.Unmarshal(carsDoc, spec)
@@ -1073,27 +1019,29 @@ func TestDefaultResolutionCache(t *testing.T) {
 }
 
 func TestRelativeBaseURI(t *testing.T) {
-	server := httptest.NewServer(http.FileServer(http.Dir("fixtures/remote")))
+	server := httptest.NewServer(http.FileServer(http.Dir(filepath.Join("fixtures", "remote"))))
 	defer server.Close()
 
 	spec := new(Swagger)
-	// resolver, err := defaultSchemaLoader(spec, nil, nil,nil)
-	// assert.NoError(t, err)
 
+	// empty spec
 	err := ExpandSpec(spec, nil)
 	assert.NoError(t, err)
 
-	specDoc, err := jsonDoc("fixtures/remote/all-the-things.json")
+	// spec retrieved from file
+	specDoc, err := jsonDoc(filepath.Join("fixtures", "remote", "all-the-things.json"))
 	assert.NoError(t, err)
 
 	opts := &ExpandOptions{
 		RelativeBase: server.URL + "/all-the-things.json",
 	}
 
+	// unmarshall spec from document
 	spec = new(Swagger)
 	err = json.Unmarshal(specDoc, spec)
 	assert.NoError(t, err)
 
+	// create spec programmatically
 	pet := spec.Definitions["pet"]
 	errorModel := spec.Definitions["errorModel"]
 	petResponse := spec.Responses["petResponse"]
@@ -1101,17 +1049,21 @@ func TestRelativeBaseURI(t *testing.T) {
 	stringResponse := spec.Responses["stringResponse"]
 	tagParam := spec.Parameters["tag"]
 	idParam := spec.Parameters["idParam"]
-
 	anotherPet := spec.Responses["anotherPet"]
 	anotherPet.Ref = MustCreateRef(server.URL + "/" + anotherPet.Ref.String())
+
+	// expand single response
 	err = ExpandResponse(&anotherPet, opts.RelativeBase)
 	assert.NoError(t, err)
-	spec.Responses["anotherPet"] = anotherPet
 
+	spec.Responses["anotherPet"] = anotherPet
 	circularA := spec.Responses["circularA"]
 	circularA.Ref = MustCreateRef(server.URL + "/" + circularA.Ref.String())
+
+	// expand single response with circular ref
 	err = ExpandResponse(&circularA, opts.RelativeBase)
 	assert.NoError(t, err)
+
 	spec.Responses["circularA"] = circularA
 
 	err = ExpandSpec(spec, opts)
@@ -1119,9 +1071,7 @@ func TestRelativeBaseURI(t *testing.T) {
 
 	assert.Equal(t, tagParam, spec.Parameters["query"])
 	assert.Equal(t, petResponse, spec.Responses["petResponse"])
-	// ICI
 	assert.Equal(t, petResponse, spec.Responses["anotherPet"])
-	// ICI
 	assert.Equal(t, pet, *spec.Responses["petResponse"].Schema)
 	assert.Equal(t, stringResponse, *spec.Paths.Paths["/"].Get.Responses.Default)
 	assert.Equal(t, petResponse, spec.Paths.Paths["/"].Get.Responses.StatusCodeResponses[200])
@@ -1131,6 +1081,7 @@ func TestRelativeBaseURI(t *testing.T) {
 	assert.Equal(t, spec.Definitions["petInput"], *spec.Paths.Paths["/pets"].Post.Parameters[0].Schema)
 	assert.Equal(t, petResponse, spec.Paths.Paths["/pets"].Post.Responses.StatusCodeResponses[200])
 	assert.Equal(t, errorModel, *spec.Paths.Paths["/pets"].Post.Responses.Default.Schema)
+
 	pi := spec.Paths.Paths["/pets/{id}"]
 	assert.Equal(t, idParam, pi.Get.Parameters[0])
 	assert.Equal(t, petResponse, pi.Get.Responses.StatusCodeResponses[200])
@@ -1215,24 +1166,29 @@ func TestResolveRemoteRef_RootSame(t *testing.T) {
 
 	rootDoc := new(Swagger)
 	b, err := ioutil.ReadFile(filepath.Join(specs, "refed.json"))
-	// the filename doesn't matter because ref will eventually point to refed.json
-	specBase, _ := absPath(filepath.Join(specs, "anyotherfile.json"))
-	if assert.NoError(t, err) && assert.NoError(t, json.Unmarshal(b, rootDoc)) {
-		var result0 Swagger
-		ref0, _ := NewRef(server.URL + "/refed.json#")
-		resolver0, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
-		if assert.NoError(t, resolver0.Resolve(&ref0, &result0, "")) {
-			assertSpecs(t, result0, *rootDoc)
-		}
+	require.NoError(t, err)
 
-		var result1 Swagger
-		ref1, _ := NewRef("./refed.json")
-		resolver1, _ := defaultSchemaLoader(rootDoc, &ExpandOptions{
-			RelativeBase: specBase,
-		}, nil, nil)
-		if assert.NoError(t, resolver1.Resolve(&ref1, &result1, specBase)) {
-			assertSpecs(t, result1, *rootDoc)
-		}
+	// the filename doesn't matter because ref will eventually point to refed.json
+	specBase := testAbsPath(filepath.Join(specs, "anyotherfile.json"))
+	require.NotEmpty(t, specBase)
+
+	err = json.Unmarshal(b, rootDoc)
+	require.NoError(t, err)
+
+	var result0 Swagger
+	ref0, _ := NewRef(server.URL + "/refed.json#")
+	resolver0, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
+	if assert.NoError(t, resolver0.Resolve(&ref0, &result0, "")) {
+		assertSpecs(t, result0, *rootDoc)
+	}
+
+	var result1 Swagger
+	ref1, _ := NewRef("./refed.json")
+	resolver1, _ := defaultSchemaLoader(rootDoc, &ExpandOptions{
+		RelativeBase: specBase,
+	}, nil, nil)
+	if assert.NoError(t, resolver1.Resolve(&ref1, &result1, specBase)) {
+		assertSpecs(t, result1, *rootDoc)
 	}
 }
 
@@ -1461,52 +1417,69 @@ func TestResolveLocalRef_FromInvalidFragment(t *testing.T) {
 func TestResolveLocalRef_Parameter(t *testing.T) {
 	rootDoc := new(Swagger)
 	b, err := ioutil.ReadFile(filepath.Join(specs, "refed.json"))
-	basePath, _ := absPath(filepath.Join(specs, "refed.json"))
-	if assert.NoError(t, err) && assert.NoError(t, json.Unmarshal(b, rootDoc)) {
-		var tgt Parameter
-		ref, err := NewRef("#/parameters/idParam")
-		if assert.NoError(t, err) {
-			resolver, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
-			if assert.NoError(t, resolver.Resolve(&ref, &tgt, basePath)) {
-				assert.Equal(t, "id", tgt.Name)
-				assert.Equal(t, "path", tgt.In)
-				assert.Equal(t, "ID of pet to fetch", tgt.Description)
-				assert.True(t, tgt.Required)
-				assert.Equal(t, "integer", tgt.Type)
-				assert.Equal(t, "int64", tgt.Format)
-			}
+	require.NoError(t, err)
+
+	basePath := testAbsPath(filepath.Join(specs, "refed.json"))
+	require.NotEmpty(t, basePath)
+
+	err = json.Unmarshal(b, rootDoc)
+	require.NoError(t, err)
+
+	var tgt Parameter
+	ref, err := NewRef("#/parameters/idParam")
+	if assert.NoError(t, err) {
+		resolver, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
+		if assert.NoError(t, resolver.Resolve(&ref, &tgt, basePath)) {
+			assert.Equal(t, "id", tgt.Name)
+			assert.Equal(t, "path", tgt.In)
+			assert.Equal(t, "ID of pet to fetch", tgt.Description)
+			assert.True(t, tgt.Required)
+			assert.Equal(t, "integer", tgt.Type)
+			assert.Equal(t, "int64", tgt.Format)
 		}
 	}
 }
 
 func TestResolveLocalRef_PathItem(t *testing.T) {
 	rootDoc := new(Swagger)
+
 	b, err := ioutil.ReadFile(filepath.Join(specs, "refed.json"))
-	basePath, _ := absPath(filepath.Join(specs, "refed.json"))
-	if assert.NoError(t, err) && assert.NoError(t, json.Unmarshal(b, rootDoc)) {
-		var tgt PathItem
-		ref, err := NewRef("#/paths/" + jsonpointer.Escape("/pets/{id}"))
-		if assert.NoError(t, err) {
-			resolver, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
-			if assert.NoError(t, resolver.Resolve(&ref, &tgt, basePath)) {
-				assert.Equal(t, rootDoc.Paths.Paths["/pets/{id}"].Get, tgt.Get)
-			}
+	require.NoError(t, err)
+
+	basePath := testAbsPath(filepath.Join(specs, "refed.json"))
+	require.NotEmpty(t, basePath)
+
+	err = json.Unmarshal(b, rootDoc)
+	require.NoError(t, err)
+
+	var tgt PathItem
+	ref, err := NewRef("#/paths/" + jsonpointer.Escape("/pets/{id}"))
+	if assert.NoError(t, err) {
+		resolver, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
+		if assert.NoError(t, resolver.Resolve(&ref, &tgt, basePath)) {
+			assert.Equal(t, rootDoc.Paths.Paths["/pets/{id}"].Get, tgt.Get)
 		}
 	}
 }
 
 func TestResolveLocalRef_Response(t *testing.T) {
 	rootDoc := new(Swagger)
+
 	b, err := ioutil.ReadFile(filepath.Join(specs, "refed.json"))
-	basePath, _ := absPath(filepath.Join(specs, "refed.json"))
-	if assert.NoError(t, err) && assert.NoError(t, json.Unmarshal(b, rootDoc)) {
-		var tgt Response
-		ref, err := NewRef("#/responses/petResponse")
-		if assert.NoError(t, err) {
-			resolver, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
-			if assert.NoError(t, resolver.Resolve(&ref, &tgt, basePath)) {
-				assert.Equal(t, rootDoc.Responses["petResponse"], tgt)
-			}
+	require.NoError(t, err)
+
+	basePath := testAbsPath(filepath.Join(specs, "refed.json"))
+	require.NotEmpty(t, basePath)
+
+	err = json.Unmarshal(b, rootDoc)
+	require.NoError(t, err)
+
+	var tgt Response
+	ref, err := NewRef("#/responses/petResponse")
+	if assert.NoError(t, err) {
+		resolver, _ := defaultSchemaLoader(rootDoc, nil, nil, nil)
+		if assert.NoError(t, resolver.Resolve(&ref, &tgt, basePath)) {
+			assert.Equal(t, rootDoc.Responses["petResponse"], tgt)
 		}
 	}
 }
@@ -1516,15 +1489,15 @@ func TestResolveForTransitiveRefs(t *testing.T) {
 	rawSpec, err := ioutil.ReadFile(filepath.Join(specs, "todos.json"))
 	assert.NoError(t, err)
 
-	basePath, err := absPath(filepath.Join(specs, "todos.json"))
-	assert.NoError(t, err)
+	basePath := testAbsPath(filepath.Join(specs, "todos.json"))
+	assert.NotEmpty(t, basePath)
+
+	err = json.Unmarshal(rawSpec, &spec)
+	require.NoError(t, err)
 
 	opts := &ExpandOptions{
 		RelativeBase: basePath,
 	}
-
-	err = json.Unmarshal(rawSpec, &spec)
-	assert.NoError(t, err)
 
 	err = ExpandSpec(spec, opts)
 	assert.NoError(t, err)
@@ -1601,14 +1574,26 @@ func expandRootWithID(t *testing.T, root *Swagger, testcase string) {
 	}
 }
 
-const pathItemsFixture = "fixtures/expansion/pathItems.json"
+var (
+	pathItemsFixture string
+	extraRefFixture  string
+)
+
+func init() {
+	pathItemsFixture = filepath.Join("fixtures", "expansion", "pathItems.json")
+	extraRefFixture = filepath.Join("fixtures", "expansion", "extraRef.json")
+}
 
 func TestExpandPathItem(t *testing.T) {
 	spec := new(Swagger)
 	specDoc, err := jsonDoc(pathItemsFixture)
-	assert.NoError(t, err)
-	_ = json.Unmarshal(specDoc, spec)
-	specPath, _ := absPath(pathItemsFixture)
+	require.NoError(t, err)
+
+	err = json.Unmarshal(specDoc, spec)
+	require.NoError(t, err)
+
+	specPath := testAbsPath(pathItemsFixture)
+	require.NotEmpty(t, specPath)
 
 	// ExpandSpec use case
 	err = ExpandSpec(spec, &ExpandOptions{RelativeBase: specPath})
@@ -1647,10 +1632,15 @@ func TestExpandPathItem(t *testing.T) {
 
 func TestResolvePathItem(t *testing.T) {
 	spec := new(Swagger)
+
 	specDoc, err := jsonDoc(pathItemsFixture)
-	assert.NoError(t, err)
-	_ = json.Unmarshal(specDoc, spec)
-	specPath, _ := absPath(pathItemsFixture)
+	require.NoError(t, err)
+
+	err = json.Unmarshal(specDoc, spec)
+	require.NoError(t, err)
+
+	specPath := testAbsPath(pathItemsFixture)
+	require.NotEmpty(t, specPath)
 
 	// Resolve use case
 	pth := spec.Paths.Paths["/todos"]
@@ -1677,14 +1667,17 @@ func TestResolvePathItem(t *testing.T) {
 			 }`, string(jazon))
 }
 
-const extraRefFixture = "fixtures/expansion/extraRef.json"
-
 func TestExpandExtraItems(t *testing.T) {
 	spec := new(Swagger)
+
 	specDoc, err := jsonDoc(extraRefFixture)
-	assert.NoError(t, err)
-	_ = json.Unmarshal(specDoc, spec)
-	specPath, _ := absPath(extraRefFixture)
+	require.NoError(t, err)
+
+	err = json.Unmarshal(specDoc, spec)
+	require.NoError(t, err)
+
+	specPath := testAbsPath(extraRefFixture)
+	require.NotEmpty(t, specPath)
 
 	// ExpandSpec use case: unsupported $refs are not expanded
 	err = ExpandSpec(spec, &ExpandOptions{RelativeBase: specPath})
@@ -1754,10 +1747,15 @@ func TestExpandExtraItems(t *testing.T) {
 func TestResolveExtraItem(t *testing.T) {
 	// go-openapi extra goodie: $ref in simple schema Items and Headers
 	spec := new(Swagger)
+
 	specDoc, err := jsonDoc(extraRefFixture)
-	assert.NoError(t, err)
-	_ = json.Unmarshal(specDoc, spec)
-	specPath, _ := absPath(extraRefFixture)
+	require.NoError(t, err)
+
+	err = json.Unmarshal(specDoc, spec)
+	require.NoError(t, err)
+
+	specPath := testAbsPath(extraRefFixture)
+	require.NotEmpty(t, specPath)
 
 	// Resolve param Items use case: here we explicitly resolve the unsuppord case
 	parm := spec.Paths.Paths["/employees"].Get.Parameters[0]

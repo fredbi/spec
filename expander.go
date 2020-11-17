@@ -208,7 +208,7 @@ func baseForRoot(root interface{}, cache ResolutionCache) string {
 	// cache the root document to resolve $ref's
 	if root != nil {
 		base, _ := absPath(rootBase)
-		normalizedBase := normalizeAbsPath(base)
+		normalizedBase := normalizeAbsPath(base) // FRED(6)
 		debugLog("setting root doc in cache at: %s", normalizedBase)
 		if cache == nil {
 			cache = resCache
@@ -282,7 +282,7 @@ func expandItems(target Schema, parentRefs []string, resolver *schemaLoader, bas
 func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
 	if target.Ref.String() == "" && target.Ref.IsRoot() {
 		// normalizing is important
-		newRef := normalizeFileRef(&target.Ref, basePath)
+		newRef := normalizeFileRef(&target.Ref, basePath) // FRED(7)
 		target.Ref = *newRef
 		return &target, nil
 
@@ -300,7 +300,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 			// path.Clean here would not work correctly if basepath is http
 			refPath = fmt.Sprintf("%s%s", refPath, "placeholder.json")
 		}
-		basePath = normalizePaths(refPath, basePath)
+		basePath = normalizePaths(refPath, basePath) // FRED(8)
 	}
 
 	var t *Schema
@@ -308,7 +308,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	// Ref also changes the resolution scope of children expandSchema
 	if target.Ref.String() != "" {
 		// here the resolution scope is changed because a $ref was encountered
-		normalizedRef := normalizeFileRef(&target.Ref, basePath)
+		normalizedRef := normalizeFileRef(&target.Ref, basePath) // FRED(9)
 		normalizedBasePath := normalizedRef.RemoteURI()
 
 		if resolver.isCircular(normalizedRef, basePath, parentRefs...) {
@@ -318,7 +318,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 			debugLog("shortcut circular ref: basePath: %s, normalizedPath: %s, normalized ref: %s",
 				basePath, normalizedBasePath, normalizedRef.String())
 			if !resolver.options.AbsoluteCircularRef {
-				target.Ref = *denormalizeFileRef(normalizedRef, normalizedBasePath, resolver.context.basePath)
+				target.Ref = *denormalizeFileRef(normalizedRef, normalizedBasePath, resolver.context.basePath) // FRED(10)
 			} else {
 				target.Ref = *normalizedRef
 			}
@@ -632,7 +632,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 	if sch != nil && sch.Ref.String() != "" {
 		// schema expanded to a $ref in another root
 		var ern error
-		sch.Ref, ern = NewRef(normalizePaths(sch.Ref.String(), ref.RemoteURI()))
+		sch.Ref, ern = NewRef(normalizePaths(sch.Ref.String(), ref.RemoteURI())) // FRED(11)
 		if ern != nil {
 			return ern
 		}

@@ -20,6 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -139,6 +140,45 @@ func normalizeFileRef(ref *Ref, relativeBase string) *Ref {
 	return &r
 }
 
+// normalizedAbsPath returns a normalized absolute path for cache
+//
+// * all URIs or paths are normalized to slashes.
+// * on windows, drive letters are lower cased.
+func normalizedAbsPath(pth string) string {
+	if strings.HasPrefix(pth, "http") {
+		// does not change fully qualified URI
+		return pth
+	}
+
+	if strings.HasPrefix(pth, "file://") {
+		return "file://" + normalizedAbsPath(strings.TrimPrefix(pth, "file://"))
+	}
+
+	if !filepath.IsAbs(pth) {
+		wd, _ := os.Getwd()
+		return filepath.ToSlash(filepath.Join(wd, pth))
+	}
+
+	return normalizeURL(pth).String()
+}
+
+// normalizeURL gives a common way to represent URLs without scheme internally, in particular
+// when it comes to represent windows paths.
+func normalizeURL(ref string) *url.URL {
+	if runtime.GOOS == "windows" {
+		// on windows, URIs starting with absolute file path are actually invalid:
+		// drive letter is parsed as scheme, and path is actually rendered in the opaque section of the URL.
+		// Rewrite the URL with correct path
+		u := mustURL(url.Parse(ref))
+		if len(u.Scheme) > 0 {
+			u.Path = "/" + u.Scheme + ":" + filepath.ToSlash(u.Path) // turns cases like: C:/a/b/c into /C:/a/b//c
+			u.Scheme = ""
+			return u
+		}
+	}
+	return mustURL(url.Parse(ref))
+}
+
 // absPath returns the absolute path of a file
 func absPath(fname string) (string, error) {
 	if strings.HasPrefix(fname, "http") {
@@ -149,4 +189,28 @@ func absPath(fname string) (string, error) {
 	}
 	wd, err := os.Getwd()
 	return filepath.Join(wd, fname), err
+}
+
+func mustRefPtr(ref Ref, err error) *Ref {
+	if err != nil {
+		msg := fmt.Sprintf("invalid ref: %v", err)
+		panic(msg)
+	}
+	return &ref
+}
+
+func mustURL(u *url.URL, err error) *url.URL {
+	if err != nil {
+		msg := fmt.Sprintf("invalid URL: %v", err)
+		panic(msg)
+	}
+	return u
+}
+
+func mustString(s string, err error) string {
+	if err != nil {
+		msg := fmt.Sprintf("invalid string: %v", err)
+		panic(msg)
+	}
+	return s
 }
