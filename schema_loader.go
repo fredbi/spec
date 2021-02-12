@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/go-openapi/spec/normalizer"
 	"github.com/go-openapi/swag"
 )
 
@@ -85,7 +86,7 @@ func (r *schemaLoader) transitiveResolver(basePath string, ref Ref) *schemaLoade
 	}
 
 	baseRef := MustCreateRef(basePath)
-	currentRef := normalizeRef(&ref, basePath)
+	currentRef := Ref{Ref: normalizer.NormalizeRef(ref.Ref, basePath)}
 	if strings.HasPrefix(currentRef.String(), baseRef.String()) {
 		return r
 	}
@@ -106,7 +107,7 @@ func (r *schemaLoader) transitiveResolver(basePath string, ref Ref) *schemaLoade
 func (r *schemaLoader) updateBasePath(transitive *schemaLoader, basePath string) string {
 	if transitive != r {
 		if transitive.options != nil && transitive.options.RelativeBase != "" {
-			return normalizeBase(transitive.options.RelativeBase)
+			return normalizer.NormalizeBase(transitive.options.RelativeBase)
 		}
 	}
 
@@ -141,7 +142,7 @@ func (r *schemaLoader) resolveRef(ref *Ref, target interface{}, basePath string)
 	if (ref.IsRoot() || ref.HasFragmentOnly) && root != nil {
 		data = root
 	} else {
-		baseRef := normalizeRef(ref, basePath)
+		baseRef := normalizer.NormalizeRef(ref.Ref, basePath)
 		data, _, _, err = r.load(baseRef.GetURL())
 		if err != nil {
 			return err
@@ -165,7 +166,7 @@ func (r *schemaLoader) load(refURL *url.URL) (interface{}, url.URL, bool, error)
 
 	var err error
 	pth := toFetch.String()
-	normalized := normalizeBase(pth)
+	normalized := normalizer.NormalizeBase(pth)
 	debugLog("loading doc from: %s", normalized)
 
 	data, fromCache := r.cache.Get(normalized)
@@ -191,7 +192,7 @@ func (r *schemaLoader) load(refURL *url.URL) (interface{}, url.URL, bool, error)
 //
 // It relies on a private context (which needs not be locked).
 func (r *schemaLoader) isCircular(ref *Ref, basePath string, parentRefs ...string) (foundCycle bool) {
-	normalizedRef := normalizeURI(ref.String(), basePath)
+	normalizedRef := normalizer.NormalizeURI(ref.String(), basePath)
 	if _, ok := r.context.circulars[normalizedRef]; ok {
 		// circular $ref has been already detected in another explored cycle
 		foundCycle = true
@@ -235,10 +236,10 @@ func (r *schemaLoader) deref(input interface{}, parentRefs []string, basePath st
 		return nil
 	}
 
-	normalizedRef := normalizeRef(ref, basePath)
+	normalizedRef := Ref{Ref: normalizer.NormalizeRef(ref.Ref, basePath)}
 	normalizedBasePath := normalizedRef.RemoteURI()
 
-	if r.isCircular(normalizedRef, basePath, parentRefs...) {
+	if r.isCircular(&normalizedRef, basePath, parentRefs...) {
 		return nil
 	}
 
@@ -283,7 +284,7 @@ func (r *schemaLoader) setSchemaID(target interface{}, id, basePath string) (str
 	// updates the current base path
 	// * important: ID can be a relative path
 	// * registers target to be fetchable from the new base proposed by this id
-	newBasePath := normalizeURI(refPath, basePath)
+	newBasePath := normalizer.NormalizeURI(refPath, basePath)
 
 	// store found IDs for possible future reuse in $ref
 	r.cache.Set(newBasePath, target)

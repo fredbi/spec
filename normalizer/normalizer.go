@@ -12,19 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package spec
+package normalizer
 
 import (
 	"net/url"
 	"path"
 	"strings"
+
+	"github.com/go-openapi/jsonreference"
 )
 
 const fileScheme = "file"
 
-// normalizeURI ensures that all $ref paths used internally by the expander are canonicalized.
+// NormalizeURI ensures that all $ref paths used internally by the spec expander are canonicalized.
 //
-// NOTE(windows): there is a tolerance over the strict URI format on windows.
+// NOTE(windows): there is a tolerance over the strict observance of the URI format on windows.
 //
 // The normalizer accepts relative file URLs like 'Path\File.JSON' as well as absolute file URLs like
 // 'C:\Path\file.Yaml'.
@@ -39,10 +41,10 @@ const fileScheme = "file"
 // is attempted.
 //
 // The base path argument is assumed to be canonicalized (e.g. using normalizeBase()).
-func normalizeURI(refPath, base string) string {
+func NormalizeURI(refPath, base string) string {
 	refURL, err := url.Parse(refPath)
 	if err != nil {
-		specLogger.Printf("warning: invalid URI in $ref  %q: %v", refPath, err)
+		normLogger.Printf("warning: invalid URI in $ref  %q: %v", refPath, err)
 		refURL, refPath = repairURI(refPath)
 	}
 
@@ -53,7 +55,7 @@ func normalizeURI(refPath, base string) string {
 		refURL.Path = ""
 	}
 
-	r := MustCreateRef(refURL.String())
+	r := jsonreference.MustCreateRef(refURL.String())
 	if r.IsCanonical() {
 		return refURL.String()
 	}
@@ -70,7 +72,7 @@ func normalizeURI(refPath, base string) string {
 	return baseURL.String()
 }
 
-// denormalizeRef returns the simplest notation for a normalized $ref, given the path of the original root document.
+// DenormalizeRef returns the simplest notation for a normalized $ref, given the path of the original root document.
 //
 // When calling this, we assume that:
 // * $ref is a canonical URI
@@ -85,12 +87,12 @@ func normalizeURI(refPath, base string) string {
 // in that case, the rebasing is performed // against the id only if this is an anchor for the initial root document.
 // All other intermediate "id"'s found along the way are ignored for the purpose of rebasing.
 //
-func denormalizeRef(ref *Ref, originalRelativeBase, id string) Ref {
+func DenormalizeRef(ref jsonreference.Ref, originalRelativeBase, id string) jsonreference.Ref {
 	debugLog("denormalizeRef called:\n$ref: %q\noriginal: %s\nroot ID:%s", ref.String(), originalRelativeBase, id)
 
 	if ref.String() == "" || ref.IsRoot() || ref.HasFragmentOnly {
 		// short circuit: $ref to current doc
-		return *ref
+		return ref
 	}
 
 	if id != "" {
@@ -110,13 +112,13 @@ func denormalizeRef(ref *Ref, originalRelativeBase, id string) Ref {
 	return r
 }
 
-func rebase(ref *Ref, v *url.URL, notEqual bool) (Ref, bool) {
+func rebase(ref jsonreference.Ref, v *url.URL, notEqual bool) (jsonreference.Ref, bool) {
 	var newBase url.URL
 
 	u := ref.GetURL()
 
 	if u.Scheme != v.Scheme || u.Host != v.Host {
-		return *ref, false
+		return ref, false
 	}
 
 	docPath := v.Path
@@ -138,7 +140,7 @@ func rebase(ref *Ref, v *url.URL, notEqual bool) (Ref, bool) {
 
 	if notEqual && newBase.Path == "" && newBase.Fragment == "" {
 		// do not want rebasing to end up in an empty $ref
-		return *ref, false
+		return ref, false
 	}
 
 	if path.IsAbs(newBase.Path) {
@@ -147,16 +149,15 @@ func rebase(ref *Ref, v *url.URL, notEqual bool) (Ref, bool) {
 		newBase.Host = v.Host
 	}
 
-	return MustCreateRef(newBase.String()), true
+	return jsonreference.MustCreateRef(newBase.String()), true
 }
 
-// normalizeRef canonicalize a Ref, using a canonical relativeBase as its absolute anchor
-func normalizeRef(ref *Ref, relativeBase string) *Ref {
-	r := MustCreateRef(normalizeURI(ref.String(), relativeBase))
-	return &r
+// NormalizeRef canonicalize a Ref, using a canonical relativeBase as its absolute anchor
+func NormalizeRef(ref jsonreference.Ref, relativeBase string) jsonreference.Ref {
+	return jsonreference.MustCreateRef(NormalizeURI(ref.String(), relativeBase))
 }
 
-// normalizeBase performs a normalization of the input base path.
+// NormalizeBase performs a normalization of the input base path.
 //
 // This always yields a canonical URI (absolute), usable for the document cache.
 //
@@ -167,10 +168,10 @@ func normalizeRef(ref *Ref, relativeBase string) *Ref {
 // in a file:// URL with lower cased drive letter and path.
 //
 // See also: https://en.wikipedia.org/wiki/File_URI_scheme
-func normalizeBase(in string) string {
+func NormalizeBase(in string) string {
 	u, err := url.Parse(in)
 	if err != nil {
-		specLogger.Printf("warning: invalid URI in RelativeBase  %q: %v", in, err)
+		normLogger.Printf("warning: invalid URI in RelativeBase  %q: %v", in, err)
 		u, in = repairURI(in)
 	}
 

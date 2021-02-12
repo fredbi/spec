@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/go-openapi/spec/normalizer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -147,7 +148,7 @@ func TestExpand_Spec(t *testing.T) {
 }
 
 func TestExpand_InternalResponse(t *testing.T) {
-	basePath := normalizeBase(filepath.Join("fixtures", "expansion", "all-the-things.json"))
+	basePath := normalizer.NormalizeBase(filepath.Join("fixtures", "expansion", "all-the-things.json"))
 	specDoc, err := jsonDoc(basePath)
 	require.NoError(t, err)
 
@@ -268,7 +269,7 @@ func TestExpand_ResponseAndParamWithRoot(t *testing.T) {
 }
 
 func TestExpand_InternalParameter(t *testing.T) {
-	basePath := normalizeBase(filepath.Join("fixtures", "expansion", "params.json"))
+	basePath := normalizer.NormalizeBase(filepath.Join("fixtures", "expansion", "params.json"))
 
 	paramDoc, err := jsonDoc(basePath)
 	require.NoError(t, err)
@@ -382,7 +383,7 @@ func TestExpand_ContinueOnError(t *testing.T) {
 }
 
 func TestExpand_InternalSchemas2(t *testing.T) {
-	basePath := normalizeBase(filepath.Join("fixtures", "expansion", "schemas2.json"))
+	basePath := normalizer.NormalizeBase(filepath.Join("fixtures", "expansion", "schemas2.json"))
 
 	carsDoc, err := jsonDoc(basePath)
 	require.NoError(t, err)
@@ -545,7 +546,7 @@ func TestExpand_InternalSchemas2(t *testing.T) {
 }
 
 func TestExpand_InternalSchemas1(t *testing.T) {
-	basePath := normalizeBase(filepath.Join("fixtures", "expansion", "schemas1.json"))
+	basePath := normalizer.NormalizeBase(filepath.Join("fixtures", "expansion", "schemas1.json"))
 
 	carsDoc, err := jsonDoc(basePath)
 	require.NoError(t, err)

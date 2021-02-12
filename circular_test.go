@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-openapi/spec/normalizer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,7 @@ func TestExpandCircular_RefExpansion(t *testing.T) {
 
 	schema := spec.Definitions["car"]
 
-	_, err = expandSchema(schema, []string{"#/definitions/car"}, resolver, normalizeBase(basePath))
+	_, err = expandSchema(schema, []string{"#/definitions/car"}, resolver, normalizer.NormalizeBase(basePath))
 	require.NoError(t, err)
 
 	jazon := asJSON(t, schema)

@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package spec
+package normalizer
 
 import (
 	"net/url"
@@ -27,7 +27,7 @@ import (
 func absPath(in string) string {
 	anchored, err := filepath.Abs(in)
 	if err != nil {
-		specLogger.Printf("warning: could not resolve current working directory: %v", err)
+		normLogger.Printf("warning: could not resolve current working directory: %v", err)
 		return in
 	}
 	return anchored

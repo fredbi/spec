@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/go-openapi/jsonpointer"
+	"github.com/go-openapi/spec/normalizer"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -137,7 +138,7 @@ func TestResolveRemoteRef_RootSame(t *testing.T) {
 	require.NoError(t, json.Unmarshal(b, rootDoc))
 
 	// the filename doesn't matter because ref will eventually point to refed.json
-	specBase := normalizeBase(filepath.Join(specs, "anyotherfile.json"))
+	specBase := normalizer.NormalizeBase(filepath.Join(specs, "anyotherfile.json"))
 
 	var result0 Swagger
 	ref0, _ := NewRef(server.URL + "/refed.json#")

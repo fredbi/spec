@@ -1,4 +1,4 @@
-package spec
+package normalizer
 
 import (
 	"os"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-openapi/jsonreference"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -214,7 +215,7 @@ func TestNormalizer_NormalizeURI(t *testing.T) {
 		}
 		t.Run(testCase.refPath, func(t *testing.T) {
 			t.Parallel()
-			out := normalizeURI(testCase.refPath, testCase.base)
+			out := NormalizeURI(testCase.refPath, testCase.base)
 			assert.Equalf(t, testCase.expOutput, out,
 				"unexpected normalized URL with $ref %q and base %q", testCase.refPath, testCase.base)
 		})
@@ -415,10 +416,10 @@ func TestNormalizer_NormalizeBase(t *testing.T) {
 		t.Run(testCase.Base, func(t *testing.T) {
 			t.Parallel()
 			expected := strings.ReplaceAll(strings.ReplaceAll(testCase.Expected, "$cwd", cwd), "$dir", path.Dir(cwd))
-			require.Equalf(t, expected, normalizeBase(testCase.Base), "for base %q", testCase.Base)
+			require.Equalf(t, expected, NormalizeBase(testCase.Base), "for base %q", testCase.Base)
 
 			// check for idempotence
-			require.Equalf(t, expected, normalizeBase(normalizeBase(testCase.Base)),
+			require.Equalf(t, expected, NormalizeBase(NormalizeBase(testCase.Base)),
 				"expected idempotent behavior on base %q", testCase.Base)
 		})
 	}
@@ -555,8 +556,8 @@ func TestNormalizer_Denormalize(t *testing.T) {
 		t.Run(testCase.Ref, func(t *testing.T) {
 			t.Parallel()
 			expected := strings.ReplaceAll(testCase.Expected, "$cwd", cwd)
-			ref := MustCreateRef(testCase.Ref)
-			newRef := denormalizeRef(&ref, testCase.OriginalBase, testCase.ID)
+			ref := jsonreference.MustCreateRef(testCase.Ref)
+			newRef := DenormalizeRef(ref, testCase.OriginalBase, testCase.ID)
 			require.NotNil(t, newRef)
 			require.Equalf(t, expected, newRef.String(),
 				"expected %s, but got %s", testCase.Expected, newRef.String())
