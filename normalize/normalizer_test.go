@@ -1,4 +1,4 @@
-package normalizer
+package normalize
 
 import (
 	"os"
@@ -215,7 +215,7 @@ func TestNormalizer_NormalizeURI(t *testing.T) {
 		}
 		t.Run(testCase.refPath, func(t *testing.T) {
 			t.Parallel()
-			out := NormalizeURI(testCase.refPath, testCase.base)
+			out := URI(testCase.refPath, testCase.base)
 			assert.Equalf(t, testCase.expOutput, out,
 				"unexpected normalized URL with $ref %q and base %q", testCase.refPath, testCase.base)
 		})
@@ -416,10 +416,10 @@ func TestNormalizer_NormalizeBase(t *testing.T) {
 		t.Run(testCase.Base, func(t *testing.T) {
 			t.Parallel()
 			expected := strings.ReplaceAll(strings.ReplaceAll(testCase.Expected, "$cwd", cwd), "$dir", path.Dir(cwd))
-			require.Equalf(t, expected, NormalizeBase(testCase.Base), "for base %q", testCase.Base)
+			require.Equalf(t, expected, Base(testCase.Base), "for base %q", testCase.Base)
 
 			// check for idempotence
-			require.Equalf(t, expected, NormalizeBase(NormalizeBase(testCase.Base)),
+			require.Equalf(t, expected, Base(Base(testCase.Base)),
 				"expected idempotent behavior on base %q", testCase.Base)
 		})
 	}

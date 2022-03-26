@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package normalizer
+package normalize
 
 import (
 	"net/url"
@@ -24,7 +24,7 @@ import (
 
 const fileScheme = "file"
 
-// NormalizeURI ensures that all $ref paths used internally by the spec expander are canonicalized.
+// URI ensures that all $ref paths used internally by the spec expander are canonicalized.
 //
 // NOTE(windows): there is a tolerance over the strict observance of the URI format on windows.
 //
@@ -41,7 +41,7 @@ const fileScheme = "file"
 // is attempted.
 //
 // The base path argument is assumed to be canonicalized (e.g. using normalizeBase()).
-func NormalizeURI(refPath, base string) string {
+func URI(refPath, base string) string {
 	refURL, err := url.Parse(refPath)
 	if err != nil {
 		normLogger.Printf("warning: invalid URI in $ref  %q: %v", refPath, err)
@@ -112,6 +112,13 @@ func DenormalizeRef(ref jsonreference.Ref, originalRelativeBase, id string) json
 	return r
 }
 
+// Rebase a ref onto an origin URL
+func Rebase(ref jsonreference.Ref, v *url.URL) jsonreference.Ref {
+	r, _ := rebase(ref, v, false)
+
+	return r
+}
+
 func rebase(ref jsonreference.Ref, v *url.URL, notEqual bool) (jsonreference.Ref, bool) {
 	var newBase url.URL
 
@@ -152,12 +159,12 @@ func rebase(ref jsonreference.Ref, v *url.URL, notEqual bool) (jsonreference.Ref
 	return jsonreference.MustCreateRef(newBase.String()), true
 }
 
-// NormalizeRef canonicalize a Ref, using a canonical relativeBase as its absolute anchor
-func NormalizeRef(ref jsonreference.Ref, relativeBase string) jsonreference.Ref {
-	return jsonreference.MustCreateRef(NormalizeURI(ref.String(), relativeBase))
+// Ref canonicalize a Ref, using a canonical relativeBase as its absolute anchor
+func Ref(ref jsonreference.Ref, relativeBase string) jsonreference.Ref {
+	return jsonreference.MustCreateRef(URI(ref.String(), relativeBase))
 }
 
-// NormalizeBase performs a normalization of the input base path.
+// Base performs a normalization of the input base path.
 //
 // This always yields a canonical URI (absolute), usable for the document cache.
 //
@@ -168,7 +175,7 @@ func NormalizeRef(ref jsonreference.Ref, relativeBase string) jsonreference.Ref 
 // in a file:// URL with lower cased drive letter and path.
 //
 // See also: https://en.wikipedia.org/wiki/File_URI_scheme
-func NormalizeBase(in string) string {
+func Base(in string) string {
 	u, err := url.Parse(in)
 	if err != nil {
 		normLogger.Printf("warning: invalid URI in RelativeBase  %q: %v", in, err)

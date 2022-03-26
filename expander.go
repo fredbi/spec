@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/go-openapi/spec/normalizer"
+	"github.com/go-openapi/spec/normalize"
 )
 
 // ExpandOptions provides options for the spec expander.
@@ -42,7 +42,7 @@ func optionsOrDefault(opts *ExpandOptions) *ExpandOptions {
 	if opts != nil {
 		clone := *opts // shallow clone to avoid internal changes to be propagated to the caller
 		if clone.RelativeBase != "" {
-			clone.RelativeBase = normalizer.NormalizeBase(clone.RelativeBase)
+			clone.RelativeBase = normalize.Base(clone.RelativeBase)
 		}
 		// if the relative base is empty, let the schema loader choose a pseudo root document
 		return &clone
@@ -113,7 +113,7 @@ func baseForRoot(root interface{}, cache ResolutionCache) string {
 	}
 
 	// cache the root document to resolve $ref's
-	normalizedBase := normalizer.NormalizeBase(rootBase)
+	normalizedBase := normalize.Base(rootBase)
 	cache.Set(normalizedBase, root)
 
 	return normalizedBase
@@ -198,7 +198,7 @@ func expandItems(target Schema, parentRefs []string, resolver *schemaLoader, bas
 
 func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
 	if target.Ref.String() == "" && target.Ref.IsRoot() {
-		target.Ref = Ref{Ref: normalizer.NormalizeRef(target.Ref.Ref, basePath)}
+		target.Ref = Ref{Ref: normalize.Ref(target.Ref.Ref, basePath)}
 		return &target, nil
 	}
 
@@ -329,7 +329,7 @@ func expandSchemaRef(target Schema, parentRefs []string, resolver *schemaLoader,
 	// Ref also changes the resolution scope of children expandSchema
 
 	// here the resolution scope is changed because a $ref was encountered
-	normalizedRef := Ref{Ref: normalizer.NormalizeRef(target.Ref.Ref, basePath)}
+	normalizedRef := Ref{Ref: normalize.Ref(target.Ref.Ref, basePath)}
 	normalizedBasePath := normalizedRef.RemoteURI()
 
 	if resolver.isCircular(&normalizedRef, basePath, parentRefs...) {
@@ -339,7 +339,7 @@ func expandSchemaRef(target Schema, parentRefs []string, resolver *schemaLoader,
 		debugLog("short circuit circular ref: basePath: %s, normalizedPath: %s, normalized ref: %s",
 			basePath, normalizedBasePath, normalizedRef.String())
 		if !resolver.options.AbsoluteCircularRef {
-			target.Ref = Ref{Ref: normalizer.DenormalizeRef(normalizedRef.Ref, resolver.context.basePath, resolver.context.rootID)}
+			target.Ref = Ref{Ref: normalize.DenormalizeRef(normalizedRef.Ref, resolver.context.basePath, resolver.context.rootID)}
 		} else {
 			target.Ref = normalizedRef
 		}
@@ -551,7 +551,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 	}
 
 	if sch.Ref.String() != "" {
-		rebasedRef, ern := NewRef(normalizer.NormalizeURI(sch.Ref.String(), basePath))
+		rebasedRef, ern := NewRef(normalize.URI(sch.Ref.String(), basePath))
 		if ern != nil {
 			return ern
 		}
@@ -560,7 +560,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 		case resolver.isCircular(&rebasedRef, basePath, parentRefs...):
 			// this is a circular $ref: stop expansion
 			if !resolver.options.AbsoluteCircularRef {
-				sch.Ref = Ref{Ref: normalizer.DenormalizeRef(rebasedRef.Ref, resolver.context.basePath, resolver.context.rootID)}
+				sch.Ref = Ref{Ref: normalize.DenormalizeRef(rebasedRef.Ref, resolver.context.basePath, resolver.context.rootID)}
 			} else {
 				sch.Ref = rebasedRef
 			}
@@ -570,7 +570,7 @@ func expandParameterOrResponse(input interface{}, resolver *schemaLoader, basePa
 			debugLog("rebased to: %s", sch.Ref.String())
 		default:
 			// skip schema expansion but rebase $ref to schema
-			sch.Ref = Ref{Ref: normalizer.DenormalizeRef(rebasedRef.Ref, resolver.context.basePath, resolver.context.rootID)}
+			sch.Ref = Ref{Ref: normalize.DenormalizeRef(rebasedRef.Ref, resolver.context.basePath, resolver.context.rootID)}
 		}
 	}
 

@@ -1,0 +1,15 @@
+* [x] PathLoader to ExpandOptions
+* [x] self-contained expansion (issue #94)
+* [x] fix expand remote (fixture azu)
+* [x] windows port (issue #97)
+* [x] test case Azure
+* [x] shallow clone of opts on input (optionsOrDefault())
+* [ ] fix nested schema ID issues
+* [ ] full tests with $ref on IDs
+* [] marshal spec with conditional AuthorizationURL
+* [] Spec extensions
+* [] Decoder to ExpandOptions
+* [] expand / flatten $ref in extensions
+* [] profiling
+* [] Refable extensions ???
+* [] Ref annotations (with Extensions) ??
