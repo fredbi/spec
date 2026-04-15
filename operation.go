@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"sort"
 
 	"github.com/go-openapi/jsonpointer"
@@ -115,7 +116,7 @@ func (o Operation) JSONLookup(token string) (interface{}, error) {
 // UnmarshalJSON hydrates this items instance with the data from JSON
 func (o *Operation) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &o.OperationProps); err != nil {
-		return err
+		return errors.Join(errors.New("DEBUG OperationProps"), err)
 	}
 	return json.Unmarshal(data, &o.VendorExtensible)
 }

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -253,11 +254,12 @@ func (s SchemaOrBool) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON converts this bool or schema object from a JSON structure
 func (s *SchemaOrBool) UnmarshalJSON(data []byte) error {
 	var nw SchemaOrBool
+	fmt.Println("SchemaOrBool:", string(data))
 	if len(data) > 0 {
 		if data[0] == '{' {
 			var sch Schema
 			if err := json.Unmarshal(data, &sch); err != nil {
-				return err
+				return errors.Join(errors.New("DEBUG SchemaOrBool"), err)
 			}
 			nw.Schema = &sch
 		}

@@ -16,6 +16,7 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/go-openapi/jsonpointer"
 	"github.com/go-openapi/swag"
@@ -53,7 +54,7 @@ func (r Response) JSONLookup(token string) (interface{}, error) {
 // UnmarshalJSON hydrates this items instance with the data from JSON
 func (r *Response) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &r.ResponseProps); err != nil {
-		return err
+		return errors.Join(errors.New("DEBUG(fred): ResponseProps"), err)
 	}
 	if err := json.Unmarshal(data, &r.Refable); err != nil {
 		return err

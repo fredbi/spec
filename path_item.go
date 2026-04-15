@@ -16,6 +16,7 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/go-openapi/jsonpointer"
 	"github.com/go-openapi/swag"
@@ -65,7 +66,7 @@ func (p *PathItem) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &p.VendorExtensible); err != nil {
 		return err
 	}
-	return json.Unmarshal(data, &p.PathItemProps)
+	return errors.Join(ErrItem, json.Unmarshal(data, &p.PathItemProps))
 }
 
 // MarshalJSON converts this items object to JSON

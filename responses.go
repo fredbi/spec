@@ -16,6 +16,7 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -61,7 +62,7 @@ func (r Responses) JSONLookup(token string) (interface{}, error) {
 // UnmarshalJSON hydrates this items instance with the data from JSON
 func (r *Responses) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &r.ResponsesProps); err != nil {
-		return err
+		return errors.Join(errors.New("DEBUG ResponseProps"), err)
 	}
 
 	if err := json.Unmarshal(data, &r.VendorExtensible); err != nil {

@@ -15,11 +15,14 @@
 package spec_test
 
 import (
+	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/go-openapi/spec"
+	"github.com/go-openapi/swag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -370,4 +373,17 @@ func TestSpec_Issue102(t *testing.T) {
 
 	jazon = asJSON(t, resp)
 	assertRefInJSONRegexp(t, jazon, "^#/definitions/Error$")
+}
+
+func TestFred(t *testing.T) {
+	path := "fixture-additional-items-3.yaml"
+	doc, err := swag.YAMLDoc(path)
+	require.NoError(t, err)
+	fmt.Println("spec", string(doc))
+
+	swspec := new(spec.Swagger)
+	err = json.Unmarshal(doc, swspec)
+	require.NoError(t, err)
+
+	require.NoError(t, spec.ExpandSpec(swspec, nil))
 }

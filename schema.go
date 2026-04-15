@@ -16,6 +16,7 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -597,12 +598,13 @@ func (s Schema) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON marshal this from JSON
 func (s *Schema) UnmarshalJSON(data []byte) error {
+	fmt.Println("DEBUG(fred): Schema:", string(data))
 	props := struct {
 		SchemaProps
 		SwaggerSchemaProps
 	}{}
 	if err := json.Unmarshal(data, &props); err != nil {
-		return err
+		return errors.Join(errors.New("FRED schema exit 1"), err)
 	}
 
 	sch := Schema{
@@ -612,7 +614,7 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 
 	var d map[string]interface{}
 	if err := json.Unmarshal(data, &d); err != nil {
-		return err
+		return errors.Join(errors.New("FRED schema exit 2"), err)
 	}
 
 	_ = sch.Ref.fromMap(d)

@@ -16,11 +16,15 @@ package spec
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/go-openapi/swag"
 )
+
+var ErrDebug = errors.New("DEBUG(fred): Path")
+var ErrItem = errors.New("DEBUG(fred): PathItem")
 
 // Paths holds the relative paths to the individual endpoints.
 // The path is appended to the [`basePath`](http://goo.gl/8us55a#swaggerBasePath) in order
@@ -48,7 +52,7 @@ func (p Paths) JSONLookup(token string) (interface{}, error) {
 func (p *Paths) UnmarshalJSON(data []byte) error {
 	var res map[string]json.RawMessage
 	if err := json.Unmarshal(data, &res); err != nil {
-		return err
+		return errors.Join(ErrDebug, err)
 	}
 	for k, v := range res {
 		if strings.HasPrefix(strings.ToLower(k), "x-") {
@@ -57,7 +61,7 @@ func (p *Paths) UnmarshalJSON(data []byte) error {
 			}
 			var d interface{}
 			if err := json.Unmarshal(v, &d); err != nil {
-				return err
+				return errors.Join(ErrDebug, err)
 			}
 			p.Extensions[k] = d
 		}
@@ -67,7 +71,7 @@ func (p *Paths) UnmarshalJSON(data []byte) error {
 			}
 			var pi PathItem
 			if err := json.Unmarshal(v, &pi); err != nil {
-				return err
+				return errors.Join(ErrDebug, err)
 			}
 			p.Paths[k] = pi
 		}
