@@ -42,7 +42,7 @@ func TestExpandCircular_RefExpansion(t *testing.T) {
 
 	schema := spec.Definitions["car"]
 
-	_, err = expandSchema(schema, []string{"#/definitions/car"}, resolver, normalizeBase(basePath))
+	_, err = expandSchema(schema, []string{"#/definitions/car"}, resolver, normalizeBase(basePath), nil)
 	require.NoError(t, err)
 
 	jazon := asJSON(t, schema)

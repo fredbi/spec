@@ -41,6 +41,11 @@ type resolverContext struct {
 	// This structure is privately instantiated and needs not be locked against
 	// concurrent access, unless we chose to implement a parallel spec walking.
 	circulars map[string]bool
+
+	// locations remembers where the expansion of a $ref was inlined in the document being
+	// expanded, as unescaped document segments. A cycle can then be anchored on the copy that
+	// is already there, instead of on the URL it came from.
+	locations map[string][]string
 	basePath  string
 	loadDoc   func(string) (json.RawMessage, error)
 	rootID    string
@@ -72,6 +77,7 @@ func newResolverContext(options *ExpandOptions) *resolverContext {
 
 	return &resolverContext{
 		circulars: make(map[string]bool),
+		locations: make(map[string][]string),
 		basePath:  expandOptions.RelativeBase, // keep the root base path in context
 		loadDoc:   loader,
 		maxNodes:  expandOptions.maxExpansionNodes(),
@@ -216,6 +222,29 @@ func (r *schemaLoader) load(refURL *url.URL) (any, error) {
 // isCircular detects cycles in sequences of $ref.
 //
 // It relies on a private context (which needs not be locked).
+// rememberLocation records where the expansion of a $ref is being inlined.
+//
+// Only the first occurrence is kept: a later one is reached with the first already in place, so
+// the first is the copy a cycle can point at.
+func (c *resolverContext) rememberLocation(ref string, path []string) {
+	if path == nil {
+		return
+	}
+
+	if _, already := c.locations[ref]; already {
+		return
+	}
+
+	c.locations[ref] = path
+}
+
+// locationOf returns where the expansion of a $ref was inlined, if it was.
+func (c *resolverContext) locationOf(ref string) ([]string, bool) {
+	path, ok := c.locations[ref]
+
+	return path, ok
+}
+
 func (r *schemaLoader) isCircular(ref *Ref, basePath string, parentRefs ...string) (foundCycle bool) {
 	normalizedRef := normalizeURI(ref.String(), basePath)
 	if _, ok := r.context.circulars[normalizedRef]; ok {

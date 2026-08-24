@@ -10,7 +10,10 @@ import (
 	"iter"
 	"maps"
 	"slices"
+	"strconv"
+	"strings"
 
+	"github.com/go-openapi/jsonpointer"
 	"github.com/go-openapi/swag/loading"
 )
 
@@ -118,7 +121,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 			parentRefs := make([]string, 0, smallPrealloc)
 			parentRefs = append(parentRefs, "#/definitions/"+key)
 
-			def, err := expandSchema(definition, parentRefs, resolver, specBasePath)
+			def, err := expandSchema(definition, parentRefs, resolver, specBasePath, []string{"definitions", key})
 			if resolver.shouldStopOnError(err) {
 				return err
 			}
@@ -130,7 +133,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 
 	for key := range sortedKeys(spec.Parameters) {
 		parameter := spec.Parameters[key]
-		if err := expandParameterOrResponse(&parameter, resolver, specBasePath); resolver.shouldStopOnError(err) {
+		if err := expandParameterOrResponse(&parameter, resolver, specBasePath, []string{"parameters", key}); resolver.shouldStopOnError(err) {
 			return err
 		}
 		spec.Parameters[key] = parameter
@@ -138,7 +141,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 
 	for key := range sortedKeys(spec.Responses) {
 		response := spec.Responses[key]
-		if err := expandParameterOrResponse(&response, resolver, specBasePath); resolver.shouldStopOnError(err) {
+		if err := expandParameterOrResponse(&response, resolver, specBasePath, []string{"responses", key}); resolver.shouldStopOnError(err) {
 			return err
 		}
 		spec.Responses[key] = response
@@ -147,7 +150,7 @@ func ExpandSpec(spec *Swagger, options *ExpandOptions) error {
 	if spec.Paths != nil {
 		for key := range sortedKeys(spec.Paths.Paths) {
 			pth := spec.Paths.Paths[key]
-			if err := expandPathItem(&pth, resolver, specBasePath); resolver.shouldStopOnError(err) {
+			if err := expandPathItem(&pth, resolver, specBasePath, []string{"paths", key}); resolver.shouldStopOnError(err) {
 				return err
 			}
 			spec.Paths.Paths[key] = pth
@@ -245,7 +248,7 @@ func ExpandSchemaWithBasePath(schema *Schema, cache ResolutionCache, opts *Expan
 	resolver := defaultSchemaLoader(nil, opts, cache, nil)
 
 	parentRefs := make([]string, 0, smallPrealloc)
-	s, err := expandSchema(*schema, parentRefs, resolver, opts.RelativeBase)
+	s, err := expandSchema(*schema, parentRefs, resolver, opts.RelativeBase, nil)
 	if err != nil {
 		return err
 	}
@@ -257,14 +260,44 @@ func ExpandSchemaWithBasePath(schema *Schema, cache ResolutionCache, opts *Expan
 	return nil
 }
 
-func expandItems(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
+// childPath returns the location of a child node, as unescaped document segments.
+//
+// The segments are kept unescaped and are only spelled as a JSON Pointer when one is rendered:
+// a path key such as "/item" holds a slash of its own, so joining before escaping would lose it.
+func childPath(path []string, segments ...string) []string {
+	if path == nil {
+		// expanding a schema on its own, not a document: there is no root to point a cycle at
+		return nil
+	}
+
+	child := make([]string, 0, len(path)+len(segments))
+	child = append(child, path...)
+	child = append(child, segments...)
+
+	return child
+}
+
+// pointerTo spells a location as a JSON Pointer into the document being expanded, escaping each
+// segment as per RFC 6901.
+func pointerTo(path []string) string {
+	var b strings.Builder
+	b.WriteString("#")
+	for _, segment := range path {
+		b.WriteString("/")
+		b.WriteString(jsonpointer.Escape(segment))
+	}
+
+	return b.String()
+}
+
+func expandItems(target Schema, parentRefs []string, resolver *schemaLoader, basePath string, path []string) (*Schema, error) {
 	if target.Items == nil {
 		return &target, nil
 	}
 
 	// array
 	if target.Items.Schema != nil {
-		t, err := expandSchema(*target.Items.Schema, parentRefs, resolver, basePath)
+		t, err := expandSchema(*target.Items.Schema, parentRefs, resolver, basePath, childPath(path, "items"))
 		if err != nil {
 			return nil, err
 		}
@@ -273,7 +306,7 @@ func expandItems(target Schema, parentRefs []string, resolver *schemaLoader, bas
 
 	// tuple
 	for i := range target.Items.Schemas {
-		t, err := expandSchema(target.Items.Schemas[i], parentRefs, resolver, basePath)
+		t, err := expandSchema(target.Items.Schemas[i], parentRefs, resolver, basePath, childPath(path, "items", strconv.Itoa(i)))
 		if err != nil {
 			return nil, err
 		}
@@ -316,7 +349,7 @@ func sortedKeys[K cmp.Ordered, V any](m map[K]V) iter.Seq[K] {
 }
 
 //nolint:gocognit,gocyclo,cyclop // complex but well-tested $ref expansion logic; refactoring deferred to dedicated PR
-func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
+func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, basePath string, path []string) (*Schema, error) {
 	if err := resolver.context.countNode(); err != nil {
 		return &target, err
 	}
@@ -335,7 +368,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 
 	if target.Ref.String() != "" {
 		if !resolver.options.SkipSchemas {
-			return expandSchemaRef(target, parentRefs, resolver, basePath)
+			return expandSchemaRef(target, parentRefs, resolver, basePath, path)
 		}
 
 		// when "expand" with SkipSchema, we just rebase the existing $ref without replacing
@@ -352,7 +385,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	rebaseExtraRefs(target.ExtraProps, resolver, basePath)
 
 	for k := range sortedKeys(target.Definitions) {
-		tt, err := expandSchema(target.Definitions[k], parentRefs, resolver, basePath)
+		tt, err := expandSchema(target.Definitions[k], parentRefs, resolver, basePath, childPath(path, "definitions", k))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -361,7 +394,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 		}
 	}
 
-	t, err := expandItems(target, parentRefs, resolver, basePath)
+	t, err := expandItems(target, parentRefs, resolver, basePath, path)
 	if resolver.shouldStopOnError(err) {
 		return &target, err
 	}
@@ -370,7 +403,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	for i := range target.AllOf {
-		t, err := expandSchema(target.AllOf[i], parentRefs, resolver, basePath)
+		t, err := expandSchema(target.AllOf[i], parentRefs, resolver, basePath, childPath(path, "allOf", strconv.Itoa(i)))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -380,7 +413,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	for i := range target.AnyOf {
-		t, err := expandSchema(target.AnyOf[i], parentRefs, resolver, basePath)
+		t, err := expandSchema(target.AnyOf[i], parentRefs, resolver, basePath, childPath(path, "anyOf", strconv.Itoa(i)))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -390,7 +423,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	for i := range target.OneOf {
-		t, err := expandSchema(target.OneOf[i], parentRefs, resolver, basePath)
+		t, err := expandSchema(target.OneOf[i], parentRefs, resolver, basePath, childPath(path, "oneOf", strconv.Itoa(i)))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -400,7 +433,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	if target.Not != nil {
-		t, err := expandSchema(*target.Not, parentRefs, resolver, basePath)
+		t, err := expandSchema(*target.Not, parentRefs, resolver, basePath, childPath(path, "not"))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -410,7 +443,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	for k := range sortedKeys(target.Properties) {
-		t, err := expandSchema(target.Properties[k], parentRefs, resolver, basePath)
+		t, err := expandSchema(target.Properties[k], parentRefs, resolver, basePath, childPath(path, "properties", k))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -420,7 +453,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	if target.AdditionalProperties != nil && target.AdditionalProperties.Schema != nil {
-		t, err := expandSchema(*target.AdditionalProperties.Schema, parentRefs, resolver, basePath)
+		t, err := expandSchema(*target.AdditionalProperties.Schema, parentRefs, resolver, basePath, childPath(path, "additionalProperties"))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -430,7 +463,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	for k := range sortedKeys(target.PatternProperties) {
-		t, err := expandSchema(target.PatternProperties[k], parentRefs, resolver, basePath)
+		t, err := expandSchema(target.PatternProperties[k], parentRefs, resolver, basePath, childPath(path, "patternProperties", k))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -441,7 +474,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 
 	for k := range sortedKeys(target.Dependencies) {
 		if target.Dependencies[k].Schema != nil {
-			t, err := expandSchema(*target.Dependencies[k].Schema, parentRefs, resolver, basePath)
+			t, err := expandSchema(*target.Dependencies[k].Schema, parentRefs, resolver, basePath, childPath(path, "dependencies", k))
 			if resolver.shouldStopOnError(err) {
 				return &target, err
 			}
@@ -452,7 +485,7 @@ func expandSchema(target Schema, parentRefs []string, resolver *schemaLoader, ba
 	}
 
 	if target.AdditionalItems != nil && target.AdditionalItems.Schema != nil {
-		t, err := expandSchema(*target.AdditionalItems.Schema, parentRefs, resolver, basePath)
+		t, err := expandSchema(*target.AdditionalItems.Schema, parentRefs, resolver, basePath, childPath(path, "additionalItems"))
 		if resolver.shouldStopOnError(err) {
 			return &target, err
 		}
@@ -524,7 +557,7 @@ func rebaseRawRef(ref string, resolver *schemaLoader, basePath string) (string, 
 	return denormalized.String(), true
 }
 
-func expandSchemaRef(target Schema, parentRefs []string, resolver *schemaLoader, basePath string) (*Schema, error) {
+func expandSchemaRef(target Schema, parentRefs []string, resolver *schemaLoader, basePath string, path []string) (*Schema, error) {
 	// if a Ref is found, all sibling fields are skipped
 	// Ref also changes the resolution scope of children expandSchema
 
@@ -538,11 +571,34 @@ func expandSchemaRef(target Schema, parentRefs []string, resolver *schemaLoader,
 		// - denormalization means that a new local file ref is set relative to the original basePath
 		debugLog("short circuit circular ref: basePath: %s, normalizedPath: %s, normalized ref: %s",
 			basePath, normalizedBasePath, normalizedRef.String())
-		if !resolver.options.AbsoluteCircularRef {
-			target.Ref = denormalizeRef(normalizedRef, resolver.context.basePath, resolver.context.rootID)
-		} else {
+		if resolver.options.AbsoluteCircularRef {
 			target.Ref = *normalizedRef
+
+			return &target, nil
 		}
+
+		// a cycle that lives in the document being expanded denormalizes to a pointer into it,
+		// and that pointer names the definition itself - nothing better to say
+		denormalized := denormalizeRef(normalizedRef, resolver.context.basePath, resolver.context.rootID)
+		if denormalized.HasFragmentOnly {
+			target.Ref = denormalized
+
+			return &target, nil
+		}
+
+		// a cycle formed in another document would otherwise leave a $ref reaching back out to
+		// it. Expansion has already inlined a copy of that subtree here: point at the copy, and
+		// the expanded document resolves on its own.
+		// an id re-scopes what a fragment means: inside such a subtree "#/definitions/x" reads
+		// against the id, not against the document, so there is nothing to anchor on
+		if location, inlined := resolver.context.locationOf(normalizedRef.String()); inlined && resolver.context.rootID == "" {
+			target.Ref = MustCreateRef(pointerTo(location))
+
+			return &target, nil
+		}
+
+		target.Ref = denormalized
+
 		return &target, nil
 	}
 
@@ -557,15 +613,17 @@ func expandSchemaRef(target Schema, parentRefs []string, resolver *schemaLoader,
 		return &target, nil
 	}
 
+	resolver.context.rememberLocation(normalizedRef.String(), path)
+
 	parentRefs = append(parentRefs, normalizedRef.String())
 	transitiveResolver := resolver.transitiveResolver(basePath, target.Ref)
 
 	basePath = resolver.updateBasePath(transitiveResolver, normalizedBasePath)
 
-	return expandSchema(*t, parentRefs, transitiveResolver, basePath)
+	return expandSchema(*t, parentRefs, transitiveResolver, basePath, path)
 }
 
-func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string) error {
+func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string, path []string) error {
 	if pathItem == nil {
 		return nil
 	}
@@ -583,11 +641,13 @@ func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string)
 
 	pathItem.Ref = Ref{}
 	for i := range pathItem.Parameters {
-		if err := expandParameterOrResponse(&(pathItem.Parameters[i]), resolver, basePath); resolver.shouldStopOnError(err) {
+		if err := expandParameterOrResponse(&(pathItem.Parameters[i]), resolver, basePath, childPath(path, "parameters", strconv.Itoa(i))); resolver.shouldStopOnError(err) {
 			return err
 		}
 	}
 
+	// the document segment each operation sits under, in the order of ops below
+	methodNames := [...]string{"get", "head", "options", "put", "post", "patch", "delete"}
 	ops := []*Operation{
 		pathItem.Get,
 		pathItem.Head,
@@ -597,8 +657,8 @@ func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string)
 		pathItem.Patch,
 		pathItem.Delete,
 	}
-	for _, op := range ops {
-		if err := expandOperation(op, resolver, basePath); resolver.shouldStopOnError(err) {
+	for i, op := range ops {
+		if err := expandOperation(op, resolver, basePath, childPath(path, methodNames[i])); resolver.shouldStopOnError(err) {
 			return err
 		}
 	}
@@ -606,14 +666,14 @@ func expandPathItem(pathItem *PathItem, resolver *schemaLoader, basePath string)
 	return nil
 }
 
-func expandOperation(op *Operation, resolver *schemaLoader, basePath string) error {
+func expandOperation(op *Operation, resolver *schemaLoader, basePath string, path []string) error {
 	if op == nil {
 		return nil
 	}
 
 	for i := range op.Parameters {
 		param := op.Parameters[i]
-		if err := expandParameterOrResponse(&param, resolver, basePath); resolver.shouldStopOnError(err) {
+		if err := expandParameterOrResponse(&param, resolver, basePath, childPath(path, "parameters", strconv.Itoa(i))); resolver.shouldStopOnError(err) {
 			return err
 		}
 		op.Parameters[i] = param
@@ -624,13 +684,13 @@ func expandOperation(op *Operation, resolver *schemaLoader, basePath string) err
 	}
 
 	responses := op.Responses
-	if err := expandParameterOrResponse(responses.Default, resolver, basePath); resolver.shouldStopOnError(err) {
+	if err := expandParameterOrResponse(responses.Default, resolver, basePath, childPath(path, "responses", "default")); resolver.shouldStopOnError(err) {
 		return err
 	}
 
 	for code := range sortedKeys(responses.StatusCodeResponses) {
 		response := responses.StatusCodeResponses[code]
-		if err := expandParameterOrResponse(&response, resolver, basePath); resolver.shouldStopOnError(err) {
+		if err := expandParameterOrResponse(&response, resolver, basePath, childPath(path, "responses", strconv.Itoa(code))); resolver.shouldStopOnError(err) {
 			return err
 		}
 		responses.StatusCodeResponses[code] = response
@@ -711,7 +771,7 @@ func expandRefableWithOptions(input any, root any, cache ResolutionCache, opts *
 	}
 	resolver := defaultSchemaLoader(root, effective, cache, nil)
 
-	return expandParameterOrResponse(input, resolver, effective.RelativeBase)
+	return expandParameterOrResponse(input, resolver, effective.RelativeBase, nil)
 }
 
 func getRefAndSchema(input any) (*Ref, *Schema, error) {
@@ -740,7 +800,7 @@ func getRefAndSchema(input any) (*Ref, *Schema, error) {
 	return ref, sch, nil
 }
 
-func expandParameterOrResponse(input any, resolver *schemaLoader, basePath string) error {
+func expandParameterOrResponse(input any, resolver *schemaLoader, basePath string, path []string) error {
 	ref, sch, err := getRefAndSchema(input)
 	if err != nil {
 		return err
@@ -801,7 +861,7 @@ func expandParameterOrResponse(input any, resolver *schemaLoader, basePath strin
 
 	// expand schema
 	// yes, we do it even if options.SkipSchema is true: we have to go down that rabbit hole and rebase nested $ref)
-	s, err := expandSchema(*sch, parentRefs, resolver, basePath)
+	s, err := expandSchema(*sch, parentRefs, resolver, basePath, childPath(path, "schema"))
 	if resolver.shouldStopOnError(err) {
 		return err
 	}
